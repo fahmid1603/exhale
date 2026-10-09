@@ -481,13 +481,7 @@ fun NewMiniPlayerContent(
         // is what the capsule's own curve allows at that height: 3dp up from the bottom of a 32dp
         // radius leaves ±13.5dp of chord about each end centre, so anything less than ~19dp of
         // inset gets clipped to a stub by the pill itself.
-        MiniPlayerProgress(
-            position = position,
-            duration = duration,
-            compact = compact,
-            trackColor = progressTrackColor,
-            progressColor = progressColor,
-        )
+        // The progress is the ring around play and pause now; a hairline as well said it twice.
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -575,11 +569,15 @@ fun NewMiniPlayerContent(
             // 48dp default in a 56dp pill - a glass button with a press swell and a backdrop that
             // reaches past its own bounds, in a capsule with 4dp of room above and below it. That
             // is the button visibly hanging out of the pill on the settings page.
-            com.ozyern.exhale.ui.component.LiquidPlayPauseButton(
+            // Play and pause in a ring that is the song's progress, as the reference has it.
+            val latestPosition by rememberUpdatedState(position)
+            val latestDuration by rememberUpdatedState(duration)
+            com.ozyern.exhale.ui.component.RingPlayPauseButton(
                 isPlaying = isPlaying,
                 isLoading = isLoading,
+                progress = { if (latestDuration > 0) latestPosition.toFloat() / latestDuration else 0f },
                 onClick = { playerConnection.player.togglePlayPause() },
-                size = buttonSize,
+                size = if (compact) 36.dp else 44.dp,
             )
         }
 
