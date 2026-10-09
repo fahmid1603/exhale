@@ -343,6 +343,7 @@ private fun categories(
                 listOf(
                     SwitchItem("Liquid glass", "Blur and refraction on the dock, bars and menus. Off uses plain frosted panels.", s.liquidGlass) { v -> update { it.copy(liquidGlass = v) } }.withIcon(NavIcons.Glass, "liquid_glass"),
                     SwitchItem("Moving artwork", "The cover's colours drift slowly behind pages and the player. Drawn on the GPU.", s.animatedBackground) { v -> update { it.copy(animatedBackground = v) } }.withIcon(NavIcons.Sparkles, "animated_background"),
+                    SwitchItem("Moving covers", "Plays a song's moving cover in the player, from Apple Music or Tidal, where it has one.", s.motionCovers) { v -> update { it.copy(motionCovers = v) } }.withIcon(NavIcons.Image, "motion_covers"),
                     SwitchItem("Ambient glow", "A wash of the artwork's colour behind the page.", s.ambientGlow) { v -> update { it.copy(ambientGlow = v) } }.withIcon(NavIcons.Palette, "ambient_glow"),
                     SwitchItem("Tilt cards under the pointer", "Covers lean toward the mouse and catch the light.", s.cardTilt) { v -> update { it.copy(cardTilt = v) } }.withIcon(NavIcons.Image, "card_tilt"),
                     ChoiceItem(

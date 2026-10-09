@@ -100,6 +100,8 @@ data class Settings(
     val playerBackground: String = "ARTWORK",
     val reducedMotion: Boolean = false,
     val animatedBackground: Boolean = true,
+    /** Apple Music's moving covers in the player, where a song has one. */
+    val motionCovers: Boolean = true,
     val cardTilt: Boolean = true,
     // Lyrics
     val lyricsStyle: String = "KARAOKE",
@@ -195,6 +197,7 @@ private fun Settings.toProps(): Map<String, String?> = mapOf(
     "player_background" to playerBackground,
     "reduced_motion" to reducedMotion.toString(),
     "animated_background" to animatedBackground.toString(),
+    "motion_covers" to motionCovers.toString(),
     "card_tilt" to cardTilt.toString(),
     "spatial_audio" to spatialAudio,
     "exclusive_audio" to exclusiveAudio.toString(),
@@ -298,6 +301,7 @@ private fun settingsFrom(get: (String) -> String?): Settings {
         playerBackground = s("player_background", d.playerBackground),
         reducedMotion = b("reduced_motion", d.reducedMotion),
         animatedBackground = b("animated_background", d.animatedBackground),
+        motionCovers = b("motion_covers", d.motionCovers),
         cardTilt = b("card_tilt", d.cardTilt),
         spatialAudio = s("spatial_audio", d.spatialAudio),
         exclusiveAudio = b("exclusive_audio", d.exclusiveAudio),

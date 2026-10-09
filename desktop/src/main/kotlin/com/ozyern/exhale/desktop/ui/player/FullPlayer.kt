@@ -115,6 +115,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import coil3.compose.AsyncImage
+import androidx.compose.runtime.key
+import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.graphics.FilterQuality
+import com.ozyern.exhale.desktop.player.MotionCovers
+import com.ozyern.exhale.desktop.player.MotionCoverRenderer
+import androidx.compose.runtime.DisposableEffect
 import com.ozyern.exhale.desktop.data.AppSettings
 import com.ozyern.exhale.desktop.data.LocalSettings
 import com.ozyern.exhale.desktop.data.Settings
@@ -673,7 +681,7 @@ private fun NowPlayingColumn(
     val settings = LocalSettings.current
     val videoMode by player.videoMode.collectAsState()
     Column(Modifier.width(width), horizontalAlignment = Alignment.CenterHorizontally) {
-        Artwork(song.thumbnail, art, playing = state.isPlaying || state.isLoading, modifier = dismissGesture, onBounds = onArtworkBounds, alpha = artworkAlpha)
+        Artwork(song, art, playing = state.isPlaying || state.isLoading, modifier = dismissGesture, onBounds = onArtworkBounds, alpha = artworkAlpha)
 
         // Only for a song YouTube actually has a video of; for everything else there's nothing to switch to.
         val videoAvailable by player.videoAvailable.collectAsState()
@@ -771,7 +779,8 @@ private fun NowPlayingColumn(
 
 /** The cover. Apple's cue for a paused song: it sits back, and its shadow comes in close. */
 @Composable
-private fun Artwork(thumbnail: String, size: Dp, playing: Boolean, modifier: Modifier, onBounds: (Rect) -> Unit, alpha: () -> Float) {
+private fun Artwork(song: SongItem, size: Dp, playing: Boolean, modifier: Modifier, onBounds: (Rect) -> Unit, alpha: () -> Float) {
+    val thumbnail = song.thumbnail
     val rest by animateFloatAsState(if (playing) 1f else 0.82f, spring(dampingRatio = 0.62f, stiffness = 180f), label = "art_rest")
     val elevation by animateDpAsState(if (playing) 48.dp else 14.dp, spring(0.8f, 200f), label = "art_shadow")
     val shape = RoundedCornerShape(16.dp)
@@ -793,6 +802,37 @@ private fun Artwork(thumbnail: String, size: Dp, playing: Boolean, modifier: Mod
         Crossfade(targetState = thumbnail, animationSpec = tween(450), label = "artwork") { url ->
             AsyncImage(url.resizedThumbnail(1200), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
+        if (LocalSettings.current.motionCovers) {
+            // Keyed on the song, so the next one starts from its still cover and fades its own in.
+            key(song.id) { MotionCoverLayer(song, playing, Modifier.fillMaxSize()) }
+        }
+    }
+}
+
+/**
+ * The song's moving cover over its still one, as the Android player shows it: looked up once, faded
+ * in on its first frame, paused with the song. Nothing at all for a song that hasn't one.
+ */
+@Composable
+private fun MotionCoverLayer(song: SongItem, playing: Boolean, modifier: Modifier) {
+    var url by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { url = runCatching { MotionCovers.find(song) }.getOrNull() }
+    val source = url ?: return
+    val renderer = remember(source) { runCatching { MotionCoverRenderer(720) }.getOrNull() } ?: return
+    DisposableEffect(renderer) {
+        renderer.play(source)
+        // Closing waits for mpv to wind down; not on the thread that draws the window.
+        onDispose { Thread { runCatching { renderer.close() } }.apply { isDaemon = true }.start() }
+    }
+    LaunchedEffect(renderer, playing) { renderer.setPaused(!playing) }
+    val started by remember(renderer) { derivedStateOf { renderer.frames.intValue > 0 } }
+    val shown by animateFloatAsState(if (started) 1f else 0f, tween(700), label = "motion_cover")
+    if (shown <= 0f) return
+    Canvas(modifier.graphicsLayer { alpha = shown }) {
+        // Read so every new frame redraws this, and only this.
+        renderer.frames.intValue
+        val frame = renderer.current ?: return@Canvas
+        drawImage(frame, dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()), filterQuality = FilterQuality.High)
     }
 }
 

@@ -19,6 +19,8 @@ dependencies {
     implementation(project(":betterlyrics"))
     implementation(project(":simpmusic"))
     implementation(project(":kugou"))
+    // Moving covers: the Android app's Apple Music and Tidal motion-artwork lookups.
+    implementation(project(":canvas"))
     // Integrations, the same modules as the Android app.
     implementation(project(":lastfm"))
     implementation(project(":kizzy"))
