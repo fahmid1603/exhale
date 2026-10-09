@@ -15,13 +15,19 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.URI
 import java.util.Properties
 
 data class PreferredArtist(val id: String, val name: String, val thumbnail: String?)
 
+data class SavedQueue(val songs: List<SongItem>, val index: Int, val positionSeconds: Double)
+
 /**
- * The desktop app's settings, in `%APPDATA%\Exhale\settings.properties`. Small enough that every
- * write rewrites the file.
+ * The desktop app's stored state, in `%APPDATA%\Exhale\settings.properties`: onboarding picks,
+ * history, the session, and the raw values behind [AppSettings]. Small enough that every write
+ * rewrites the file.
  */
 object DesktopPrefs {
     private const val RECORD = ''
@@ -33,8 +39,31 @@ object DesktopPrefs {
         System.getenv("APPDATA")?.let(::File) ?: File(System.getProperty("user.home"), ".config"),
         "Exhale/settings.properties",
     )
+
+    /** `%APPDATA%\Exhale` — caches and the sign-in browser live beside the settings. */
+    val dataDir: File get() = file.parentFile
+
     private val props = Properties().apply {
         runCatching { if (file.exists()) file.inputStream().use(::load) }
+    }
+
+    internal fun raw(key: String): String? = props.getProperty(key)
+
+    @Synchronized
+    internal fun putAll(values: Map<String, String?>) {
+        if (values.isEmpty()) return
+        values.forEach { (key, value) -> if (value == null) props.remove(key) else props.setProperty(key, value) }
+        save()
+    }
+
+    private fun put(key: String, value: String?) = putAll(mapOf(key to value))
+
+    @Synchronized
+    private fun save() {
+        runCatching {
+            file.parentFile.mkdirs()
+            file.outputStream().use { props.store(it, "Exhale desktop") }
+        }
     }
 
     var onboardingCompleted: Boolean
@@ -63,26 +92,20 @@ object DesktopPrefs {
         get() = props.getProperty("visitor_data_locale")
         set(value) = put("visitor_data_locale", value)
 
-    private val _history = MutableStateFlow(readHistory())
+    /** The player's volume — kept out of [Settings] so dragging the slider doesn't restyle the app. */
+    var volume: Int
+        get() = props.getProperty("volume")?.toIntOrNull()?.coerceIn(0, 100) ?: 100
+        set(value) = put("volume", value.toString())
+
+    // History
+
+    private val _history = MutableStateFlow(decodeSongs(records("history")))
     val history: StateFlow<List<SongItem>> = _history.asStateFlow()
 
     fun recordPlayed(song: SongItem) {
-        if (pauseHistory) return
+        if (AppSettings.current.pauseHistory) return
         val updated = (listOf(song) + _history.value.filterNot { it.id == song.id }).take(40)
-        putRecords(
-            "history",
-            updated.map { s ->
-                listOf(
-                    s.id,
-                    s.title,
-                    s.artists.joinToString(LIST.toString()) { "${it.name}$PAIR${it.id.orEmpty()}" },
-                    s.thumbnail,
-                    s.duration?.toString().orEmpty(),
-                    s.album?.name.orEmpty(),
-                    s.album?.id.orEmpty(),
-                )
-            },
-        )
+        putRecords("history", encodeSongs(updated))
         _history.value = updated
     }
 
@@ -91,7 +114,57 @@ object DesktopPrefs {
         _history.value = emptyList()
     }
 
+    private val _searchHistory = MutableStateFlow(readSearchHistory())
+    val searchHistory: StateFlow<List<String>> = _searchHistory.asStateFlow()
+
+    fun recordSearch(query: String) {
+        if (AppSettings.current.pauseSearchHistory) return
+        val q = query.trim().takeIf { it.isNotEmpty() } ?: return
+        val updated = (listOf(q) + _searchHistory.value.filterNot { it.equals(q, ignoreCase = true) }).take(20)
+        put("search_history", updated.joinToString(RECORD.toString()))
+        _searchHistory.value = updated
+    }
+
+    fun removeSearch(query: String) {
+        val updated = _searchHistory.value - query
+        put("search_history", updated.joinToString(RECORD.toString()).ifEmpty { null })
+        _searchHistory.value = updated
+    }
+
+    fun clearSearchHistory() {
+        put("search_history", null)
+        _searchHistory.value = emptyList()
+    }
+
+    // Queue — so the app reopens where it was left.
+
+    fun saveQueue(queue: List<SongItem>, index: Int, positionSeconds: Double) {
+        if (queue.isEmpty() || index !in queue.indices) {
+            clearSavedQueue()
+            return
+        }
+        // Keep the window around the current song; a 500-song radio doesn't need to be on disk.
+        val start = (index - 50).coerceAtLeast(0)
+        val window = queue.subList(start, (start + 200).coerceAtMost(queue.size))
+        putAll(
+            mapOf(
+                "queue" to encodeSongs(window).joinToString(RECORD.toString()) { it.joinToString(FIELD.toString()) },
+                "queue_index" to (index - start).toString(),
+                "queue_position" to positionSeconds.toString(),
+            ),
+        )
+    }
+
+    fun savedQueue(): SavedQueue? {
+        val songs = decodeSongs(records("queue")).takeIf { it.isNotEmpty() } ?: return null
+        val index = props.getProperty("queue_index")?.toIntOrNull()?.takeIf { it in songs.indices } ?: return null
+        return SavedQueue(songs, index, props.getProperty("queue_position")?.toDoubleOrNull() ?: 0.0)
+    }
+
+    fun clearSavedQueue() = putAll(mapOf("queue" to null, "queue_index" to null, "queue_position" to null))
+
     // Account — the YouTube Music session captured by the sign-in window. See AccountSession.
+
     var cookie: String?
         get() = props.getProperty("yt_cookie")
         set(value) = put("yt_cookie", value)
@@ -114,78 +187,88 @@ object DesktopPrefs {
         get() = props.getProperty("use_account_for_home") != "false"
         set(value) = put("use_account_for_home", value.toString())
 
-    // Content
-    var hideExplicit: Boolean
-        get() = props.getProperty("hide_explicit") == "true"
-        set(value) = put("hide_explicit", value.toString())
-    var hideVideos: Boolean
-        get() = props.getProperty("hide_videos") == "true"
-        set(value) = put("hide_videos", value.toString())
+    // Shortcuts into AppSettings for code that only reads one value.
 
-    // Playback — MAX / HIGH / LOW and AUTO / OPUS / AAC, same choices as the Android app.
-    var audioQuality: String
-        get() = props.getProperty("audio_quality") ?: "MAX"
-        set(value) = put("audio_quality", value)
-    var audioCodec: String
-        get() = props.getProperty("audio_codec") ?: "AUTO"
-        set(value) = put("audio_codec", value)
+    val hideExplicit: Boolean get() = AppSettings.current.hideExplicit
+    val hideVideos: Boolean get() = AppSettings.current.hideVideos
+    fun isLyricsProviderEnabled(name: String): Boolean = name !in AppSettings.current.lyricsDisabled
 
-    // Lyrics
-    fun isLyricsProviderEnabled(name: String): Boolean = props.getProperty("lyrics_provider_$name") != "false"
-    fun setLyricsProviderEnabled(name: String, enabled: Boolean) = put("lyrics_provider_$name", enabled.toString())
+    // Backup
 
-    // Privacy
-    var pauseHistory: Boolean
-        get() = props.getProperty("pause_history") == "true"
-        set(value) = put("pause_history", value.toString())
+    fun exportTo(target: File) {
+        synchronized(this) { save() }
+        file.copyTo(target, overwrite = true)
+    }
+
+    /** Replaces everything with the backup's contents. The account session comes with it. */
+    fun importFrom(source: File) {
+        val incoming = Properties().apply { source.inputStream().use(::load) }
+        synchronized(this) {
+            props.clear()
+            props.putAll(incoming)
+            save()
+        }
+        _artists.value = readArtists()
+        _history.value = decodeSongs(records("history"))
+        _searchHistory.value = readSearchHistory()
+        AppSettings.reload()
+    }
 
     private fun readArtists(): List<PreferredArtist> =
         records("artists").mapNotNull { f ->
             if (f.size < 2) null else PreferredArtist(f[0], f[1], f.getOrNull(2)?.ifBlank { null })
         }
 
-    private fun readHistory(): List<SongItem> =
-        records("history").mapNotNull { f ->
-            if (f.size < 4) return@mapNotNull null
-            SongItem(
-                id = f[0],
-                title = f[1],
-                artists = f[2].split(LIST).filter { it.isNotEmpty() }.map {
-                    Artist(name = it.substringBefore(PAIR), id = it.substringAfter(PAIR, "").ifBlank { null })
-                },
-                thumbnail = f[3],
-                duration = f.getOrNull(4)?.toIntOrNull(),
-                album = f.getOrNull(5)?.takeIf { it.isNotBlank() }?.let { name ->
-                    f.getOrNull(6)?.takeIf { it.isNotBlank() }?.let { Album(name, it) }
-                },
-            )
-        }
+    private fun readSearchHistory(): List<String> =
+        props.getProperty("search_history").orEmpty().split(RECORD).filter { it.isNotBlank() }
+
+    private fun encodeSongs(songs: List<SongItem>): List<List<String>> = songs.map { s ->
+        listOf(
+            s.id,
+            s.title,
+            s.artists.joinToString(LIST.toString()) { "${it.name}$PAIR${it.id.orEmpty()}" },
+            s.thumbnail,
+            s.duration?.toString().orEmpty(),
+            s.album?.name.orEmpty(),
+            s.album?.id.orEmpty(),
+        )
+    }
+
+    private fun decodeSongs(rows: List<List<String>>): List<SongItem> = rows.mapNotNull { f ->
+        if (f.size < 4) return@mapNotNull null
+        SongItem(
+            id = f[0],
+            title = f[1],
+            artists = f[2].split(LIST).filter { it.isNotEmpty() }.map {
+                Artist(name = it.substringBefore(PAIR), id = it.substringAfter(PAIR, "").ifBlank { null })
+            },
+            thumbnail = f[3],
+            duration = f.getOrNull(4)?.toIntOrNull(),
+            album = f.getOrNull(5)?.takeIf { it.isNotBlank() }?.let { name ->
+                f.getOrNull(6)?.takeIf { it.isNotBlank() }?.let { Album(name, it) }
+            },
+        )
+    }
 
     private fun records(key: String): List<List<String>> =
         props.getProperty(key).orEmpty().split(RECORD).filter { it.isNotEmpty() }.map { it.split(FIELD) }
 
     private fun putRecords(key: String, rows: List<List<String>>) =
         put(key, rows.joinToString(RECORD.toString()) { it.joinToString(FIELD.toString()) })
-
-    @Synchronized
-    private fun put(key: String, value: String?) {
-        if (value == null) props.remove(key) else props.setProperty(key, value)
-        runCatching {
-            file.parentFile.mkdirs()
-            file.outputStream().use { props.store(it, "Exhale desktop") }
-        }
-    }
 }
 
 /**
  * What YouTube is told about the listener. Without this, `hl`/`gl` came from the JVM default and
  * the visitor id was minted with nothing else to go on — so YouTube localised Home by IP.
- * Same rules as the Android app's `applyStrictLocale` + `remintVisitorDataIfLocaleChanged`.
+ * Same rules as the Android app's `applyStrictLocale` + `remintVisitorDataIfLocaleChanged`,
+ * including its explicit Content language / country overrides.
  */
 object ContentLocale {
-    fun apply(languages: List<String>) {
-        val lang = languages.firstOrNull() ?: "en"
-        YouTube.locale = YouTubeLocale(gl = anchorRegionFor(lang), hl = lang)
+    fun apply(languages: List<String> = DesktopPrefs.languages) {
+        val settings = AppSettings.current
+        val lang = settings.contentLanguage.takeIf { it != "AUTO" } ?: languages.firstOrNull() ?: "en"
+        val region = settings.contentCountry.takeIf { it != "AUTO" } ?: anchorRegionFor(lang)
+        YouTube.locale = YouTubeLocale(gl = region, hl = lang)
     }
 
     /** Reuses the stored visitor id only if it was minted under the current locale. */
@@ -238,4 +321,19 @@ object ContentLocale {
         "ro" -> "RO"
         else -> "US"
     }
+}
+
+/** The Content → Proxy setting, pushed into innertube (and, through the player, mpv and stream probes). */
+object NetworkProxy {
+    fun apply() {
+        val settings = AppSettings.current
+        YouTube.proxy = if (settings.proxyEnabled) parse(settings.proxyType, settings.proxyUrl) else null
+    }
+
+    fun parse(type: String, url: String): Proxy? = runCatching {
+        val uri = URI(if ("://" in url) url.trim() else "http://${url.trim()}")
+        val host = uri.host ?: return null
+        val kind = if (type == "SOCKS") Proxy.Type.SOCKS else Proxy.Type.HTTP
+        Proxy(kind, InetSocketAddress(host, if (uri.port > 0) uri.port else if (kind == Proxy.Type.SOCKS) 1080 else 8080))
+    }.getOrNull()
 }

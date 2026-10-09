@@ -6,41 +6,132 @@
 
 package com.ozyern.exhale.desktop.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.platform.Font
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kyant.m3color.dynamiccolor.DynamicScheme
+import com.kyant.m3color.hct.Hct
+import com.kyant.m3color.scheme.SchemeMonochrome
+import com.kyant.m3color.scheme.SchemeNeutral
+import com.kyant.m3color.scheme.SchemeTonalSpot
+import com.ozyern.exhale.desktop.data.AccentPalette
+import com.ozyern.exhale.desktop.data.AccentPalettes
+import com.ozyern.exhale.desktop.data.LocalSettings
+import com.ozyern.exhale.desktop.data.Settings
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /** Same key colour as the Android app's DefaultThemeColor. */
 val ExhaleAccent = Color(0xFFED5564)
 
-private val ExhaleDark = darkColorScheme(
-    primary = ExhaleAccent,
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFF5C1A22),
-    onPrimaryContainer = Color(0xFFFFD9DC),
-    secondary = Color(0xFFE7C08A),
-    tertiary = Color(0xFFB6A4E4),
-    background = Color(0xFF0B0909),
-    onBackground = Color(0xFFECE0E1),
-    surface = Color(0xFF0B0909),
-    onSurface = Color(0xFFF2E9EA),
-    surfaceVariant = Color(0xFF2A2224),
-    onSurfaceVariant = Color(0xFFB9AAAC),
-    surfaceContainer = Color(0xFF1A1516),
-    surfaceContainerHigh = Color(0xFF231D1E),
-    outline = Color(0xFF514446),
-    outlineVariant = Color(0x33FFFFFF),
-)
+/** The current song's artwork colour, for "Colour from artwork". Set by the app shell. */
+object ThemeSeed {
+    val artwork = MutableStateFlow<Color?>(null)
+}
+
+private fun m3Scheme(seed: Color): DynamicScheme =
+    Hct.fromInt(seed.toArgb()).let { hct ->
+        when {
+            hct.chroma < 4.0 -> SchemeMonochrome(hct, true, 0.0)
+            hct.chroma < 12.0 -> SchemeNeutral(hct, true, 0.0)
+            else -> SchemeTonalSpot(hct, true, 0.0)
+        }
+    }
+
+private fun Int.c(): Color = Color(this.toLong() and 0xFFFFFFFFL)
+
+/**
+ * The Android app's four-seed Material 3 scheme (m3color, the same library): primary, secondary
+ * and tertiary from their own seeds, every surface tier from the neutral seed. Dark only.
+ */
+fun exhaleColorScheme(palette: AccentPalette, pureBlack: Boolean): ColorScheme {
+    val p = m3Scheme(palette.primary)
+    val s = m3Scheme(palette.secondary)
+    val t = m3Scheme(palette.tertiary)
+    val n = m3Scheme(palette.neutral)
+    val scheme = darkColorScheme(
+        primary = p.primary.c(),
+        onPrimary = p.onPrimary.c(),
+        primaryContainer = p.primaryContainer.c(),
+        onPrimaryContainer = p.onPrimaryContainer.c(),
+        inversePrimary = p.inversePrimary.c(),
+        secondary = s.primary.c(),
+        onSecondary = s.onPrimary.c(),
+        secondaryContainer = s.primaryContainer.c(),
+        onSecondaryContainer = s.onPrimaryContainer.c(),
+        tertiary = t.primary.c(),
+        onTertiary = t.onPrimary.c(),
+        tertiaryContainer = t.primaryContainer.c(),
+        onTertiaryContainer = t.onPrimaryContainer.c(),
+        background = n.background.c(),
+        onBackground = n.onBackground.c(),
+        surface = n.surface.c(),
+        onSurface = n.onSurface.c(),
+        surfaceVariant = n.surfaceVariant.c(),
+        onSurfaceVariant = n.onSurfaceVariant.c(),
+        surfaceTint = p.surfaceTint.c(),
+        inverseSurface = n.inverseSurface.c(),
+        inverseOnSurface = n.inverseOnSurface.c(),
+        error = p.error.c(),
+        onError = p.onError.c(),
+        errorContainer = p.errorContainer.c(),
+        onErrorContainer = p.onErrorContainer.c(),
+        outline = n.outline.c(),
+        outlineVariant = n.outlineVariant.c(),
+        scrim = n.scrim.c(),
+        surfaceBright = n.surfaceBright.c(),
+        surfaceContainer = n.surfaceContainer.c(),
+        surfaceContainerHigh = n.surfaceContainerHigh.c(),
+        surfaceContainerHighest = n.surfaceContainerHighest.c(),
+        surfaceContainerLow = n.surfaceContainerLow.c(),
+        surfaceContainerLowest = n.surfaceContainerLowest.c(),
+        surfaceDim = n.surfaceDim.c(),
+    )
+    return if (pureBlack) scheme.copy(background = Color.Black, surface = Color.Black) else scheme
+}
+
+/** Accent changes glide instead of snapping — the colours the UI actually paints with. */
+@Composable
+private fun animate(target: ColorScheme): ColorScheme {
+    val spec = spring<Color>(stiffness = Spring.StiffnessLow)
+    @Composable
+    fun a(color: Color) = animateColorAsState(color, spec).value
+    return target.copy(
+        primary = a(target.primary),
+        onPrimary = a(target.onPrimary),
+        primaryContainer = a(target.primaryContainer),
+        onPrimaryContainer = a(target.onPrimaryContainer),
+        secondary = a(target.secondary),
+        tertiary = a(target.tertiary),
+        background = a(target.background),
+        surface = a(target.surface),
+        onSurface = a(target.onSurface),
+        surfaceVariant = a(target.surfaceVariant),
+        onSurfaceVariant = a(target.onSurfaceVariant),
+        surfaceContainer = a(target.surfaceContainer),
+        surfaceContainerHigh = a(target.surfaceContainerHigh),
+        outline = a(target.outline),
+        outlineVariant = a(target.outlineVariant),
+    )
+}
 
 /** The Android app's font. */
 private val Linotte: FontFamily by lazy {
@@ -81,12 +172,26 @@ private val ExhaleShapes = Shapes(
     extraLarge = RoundedCornerShape(28.dp),
 )
 
+/**
+ * Theme + settings for everything under it: accent (or artwork colour), pure black, and the
+ * interface size, applied as a density override so every dp and sp scales together.
+ */
 @Composable
-fun ExhaleTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = ExhaleDark,
-        typography = exhaleTypography(Linotte),
-        shapes = ExhaleShapes,
-        content = content,
-    )
+fun ExhaleTheme(settings: Settings, artworkSeed: Color?, content: @Composable () -> Unit) {
+    val palette = if (settings.dynamicTheme && artworkSeed != null) {
+        AccentPalette("artwork", "Artwork", artworkSeed)
+    } else {
+        AccentPalettes.byId(settings.accent)
+    }
+    val target = remember(palette, settings.pureBlack) { exhaleColorScheme(palette, settings.pureBlack) }
+    val scheme = animate(target)
+    val typography = remember { exhaleTypography(Linotte) }
+    val density = LocalDensity.current
+
+    CompositionLocalProvider(
+        LocalDensity provides Density(density.density * settings.uiScale, density.fontScale),
+        LocalSettings provides settings,
+    ) {
+        MaterialTheme(colorScheme = scheme, typography = typography, shapes = ExhaleShapes, content = content)
+    }
 }

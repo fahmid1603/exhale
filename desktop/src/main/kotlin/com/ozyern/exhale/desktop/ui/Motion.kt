@@ -7,8 +7,14 @@
 package com.ozyern.exhale.desktop.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.runtime.LaunchedEffect
+import com.ozyern.exhale.desktop.data.LocalSettings
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -40,6 +46,10 @@ object Motion {
     const val PressedScale = 0.92f
     val PressSpring = spring<Float>(dampingRatio = 0.72f, stiffness = 520f)
 
+    /** Android's Aquamorphic spring (constants/Dimensions.kt) — the dock, the tiles, the morphs. */
+    const val AquamorphicDamping = 0.75f
+    const val AquamorphicStiffness = 250f
+
     /** Home's arrival, from the Android HomeScreen. */
     const val FeedIntroDurationMs = 620
     const val FeedIntroStagger = 0.07f
@@ -63,6 +73,38 @@ fun Modifier.feedIntro(order: Float, progress: () -> Float): Modifier = graphics
     scaleX = grown
     scaleY = grown
     transformOrigin = TransformOrigin(0.5f, 0f)
+}
+
+/** A touch past the target and back: the curve ColorOS 17's cards arrive on. */
+private val CascadeOvershoot = CubicBezierEasing(0.34f, 1.32f, 0.64f, 1f)
+
+/**
+ * ColorOS 17's notification stack, for lists: each row rises out of a little depth, overshoots its
+ * place by a hair and settles, a beat after the one above. Rows past the first screenful don't wait.
+ * Draw phase only.
+ */
+fun Modifier.cascade(index: Int, progress: () -> Float): Modifier = graphicsLayer {
+    val begin = index.coerceAtMost(14) * 0.04f
+    val t = ((progress() - begin) / 0.42f).coerceIn(0f, 1f)
+    if (t >= 1f) return@graphicsLayer
+    val settle = CascadeOvershoot.transform(t)
+    alpha = LinearOutSlowInEasing.transform((t * 1.8f).coerceAtMost(1f))
+    translationY = (1f - settle) * 34.dp.toPx()
+    val s = 0.92f + 0.08f * settle
+    scaleX = s
+    scaleY = s
+    transformOrigin = TransformOrigin(0.5f, 0f)
+}
+
+/** A clock for [cascade] that starts when [ready] first turns true, and runs once per [key]. */
+@Composable
+fun rememberCascade(key: Any?, ready: Boolean): () -> Float {
+    val reduced = LocalSettings.current.reducedMotion
+    val clock = remember(key) { Animatable(if (reduced) 1f else 0f) }
+    LaunchedEffect(clock, ready) {
+        if (ready && clock.value == 0f) clock.animateTo(1f, tween(1_000, easing = LinearEasing))
+    }
+    return { clock.value }
 }
 
 /** A round control that squishes on press and springs back, with no ripple — glass deforms, it doesn't flash. */

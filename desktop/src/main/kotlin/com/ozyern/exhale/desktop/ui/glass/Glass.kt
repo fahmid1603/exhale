@@ -33,6 +33,7 @@ import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.Shadow
+import com.ozyern.exhale.desktop.data.AppSettings
 
 /**
  * Recording of the page content, for chrome that floats *over* it (the rail, the player bar).
@@ -54,6 +55,8 @@ fun Modifier.liquidGlass(
     blurRadius: Dp = 48.dp,
     layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
 ): Modifier {
+    // Appearance → Liquid glass off: a frosted plate with enough body to read over anything.
+    if (!AppSettings.current.liquidGlass || com.ozyern.exhale.desktop.ui.Bench.off("glass")) return glassPlate(shape, base = Color(0xE6141014))
     val tint = Color.Black.copy(alpha = tintAlpha)
     val shadowColor = Color.Black.copy(alpha = 0.45f)
     return drawBackdrop(

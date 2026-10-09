@@ -8,120 +8,250 @@ package com.ozyern.exhale.desktop.ui
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.hoverable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.lerp
+import androidx.compose.ui.window.WindowPlacement
+import androidx.compose.ui.window.WindowState
 import coil3.compose.AsyncImage
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.ozyern.exhale.desktop.appIcon
 import com.ozyern.exhale.desktop.data.AccountSession
+import com.ozyern.exhale.desktop.data.AppSettings
 import com.ozyern.exhale.desktop.data.ContentLocale
 import com.ozyern.exhale.desktop.data.DesktopPrefs
+import com.ozyern.exhale.desktop.data.LocalSettings
 import com.ozyern.exhale.desktop.player.DesktopPlayer
-import com.ozyern.exhale.desktop.player.PlayerState
+import com.ozyern.exhale.desktop.ui.account.DiscordLoginWindow
 import com.ozyern.exhale.desktop.ui.account.SignInWindow
 import com.ozyern.exhale.desktop.ui.glass.LocalAppBackdrop
 import com.ozyern.exhale.desktop.ui.glass.PageBackdropHost
-import com.ozyern.exhale.desktop.ui.glass.liquidGlass
 import com.ozyern.exhale.desktop.ui.home.ChromeInsets
 import com.ozyern.exhale.desktop.ui.home.HomeFeed
 import com.ozyern.exhale.desktop.ui.home.HomeScreen
-import com.ozyern.exhale.desktop.ui.home.HomeTopBar
-import com.ozyern.exhale.desktop.ui.library.ArtistsScreen
-import com.ozyern.exhale.desktop.ui.library.NewScreen
-import com.ozyern.exhale.desktop.ui.library.RadioScreen
-import com.ozyern.exhale.desktop.ui.library.RecentlyPlayedScreen
+import com.ozyern.exhale.desktop.ui.library.BrowseScreen
+import com.ozyern.exhale.desktop.ui.library.LibraryScreen
+import com.ozyern.exhale.desktop.ui.library.MoodAndGenresScreen
 import com.ozyern.exhale.desktop.ui.onboarding.OnboardingScreen
+import com.ozyern.exhale.desktop.ui.pages.AlbumScreen
+import com.ozyern.exhale.desktop.ui.pages.ArtistItemsScreen
+import com.ozyern.exhale.desktop.ui.pages.ArtistScreen
+import com.ozyern.exhale.desktop.ui.pages.PlaylistScreen
+import com.ozyern.exhale.desktop.ui.pages.SoundChemScreen
 import com.ozyern.exhale.desktop.ui.player.FullPlayer
-import com.ozyern.exhale.desktop.ui.player.ScrubBar
+import com.ozyern.exhale.desktop.ui.player.LocalPlayerReveal
+import com.ozyern.exhale.desktop.ui.player.PlayerPanel
+import com.ozyern.exhale.desktop.ui.player.VideoSurfaceHost
 import com.ozyern.exhale.desktop.ui.search.SearchModel
+import com.ozyern.exhale.desktop.ui.search.SearchScreen
 import com.ozyern.exhale.desktop.ui.settings.SettingsScreen
+import com.ozyern.exhale.desktop.ui.shell.ChromeNav
+import com.ozyern.exhale.desktop.ui.shell.DesktopDock
+import com.ozyern.exhale.desktop.ui.shell.DesktopDockHeight
+import com.ozyern.exhale.desktop.ui.shell.DockHeight
+import com.ozyern.exhale.desktop.ui.shell.DockMaxWidth
+import com.ozyern.exhale.desktop.ui.shell.DockTab
+import com.ozyern.exhale.desktop.ui.shell.LiquidDock
+import com.ozyern.exhale.desktop.ui.shell.LocalTitleBarHeight
+import com.ozyern.exhale.desktop.ui.shell.MiniPlayerPill
+import com.ozyern.exhale.innertube.YouTube
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.PI
+import kotlin.math.sign
+import kotlin.math.sin
+import kotlin.math.sqrt
 
-private enum class Destination(val label: String, val icon: () -> ImageVector) {
-    Home("Home", { NavIcons.Home }),
-    New("New", { NavIcons.New }),
-    Radio("Radio", { NavIcons.Radio }),
-    Recent("Recent", { NavIcons.Recent }),
-    Artists("Artists", { NavIcons.Artists }),
-    Settings("Settings", { NavIcons.Settings }),
+/** Window-wide keys (media keys, Ctrl+F…), handed over from the Window before any field sees them. */
+object AppShortcuts {
+    @Volatile var handler: ((KeyEvent) -> Boolean)? = null
+
+    /** A page's own shortcuts (Settings' Ctrl+F), tried before the app-wide ones. */
+    @Volatile var overlay: ((KeyEvent) -> Boolean)? = null
+
+    /**
+     * Plain keys — Space, N, M — for when nothing on screen has used them. A text field doesn't consume
+     * the keys it types on this platform, so fields say when they hold focus and these stand down.
+     */
+    @Volatile var plain: ((KeyEvent) -> Boolean)? = null
+
+    private val fieldsFocused = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /** True while any text field has focus: what's typed there is text, never a shortcut. */
+    val typing: Boolean get() = fieldsFocused.get() > 0
+
+    /**
+     * Called by every text field as focus comes and goes. Counted rather than set, because focus moving
+     * from one field to another arrives as the new field gaining before the old one loses.
+     */
+    fun setTyping(focused: Boolean) {
+        if (focused) fieldsFocused.incrementAndGet() else fieldsFocused.updateAndGet { (it - 1).coerceAtLeast(0) }
+    }
+
+    fun dispatch(event: KeyEvent): Boolean = overlay?.invoke(event) == true || handler?.invoke(event) == true
+
+    fun dispatchPlain(event: KeyEvent): Boolean = !typing && plain?.invoke(event) == true
 }
 
-private val RailReservedWidth = 104.dp
-private val RailItemHeight = 56.dp
-private val RailItemSpacing = 6.dp
+/**
+ * Marks a text field: while it (or anything inside it) has focus, the app-wide plain-key shortcuts
+ * stand down, so a space typed into a search box is a space rather than a pause.
+ */
+fun Modifier.typingField(): Modifier = onFocusChanged { AppShortcuts.setTyping(it.hasFocus) }
 
+/** The main window's state, so F11 and full-screen lyrics can take the whole screen. */
+val LocalWindowState = staticCompositionLocalOf<WindowState?> { null }
+
+private sealed class Route(val key: String) {
+    data object Home : Route("home")
+    data object Mood : Route("mood")
+    data object Library : Route("library")
+    data object Search : Route("search")
+    data object Settings : Route("settings")
+    data class Browse(val browseId: String, val params: String?, val title: String) : Route("browse:$browseId:$params")
+
+    // What a page already knows (title, cover) rides along so its header draws before it loads; the
+    // shared key is the card the cover flies out of.
+    data class Artist(val browseId: String, val name: String?, val thumbnail: String?) : Route("artist:$browseId")
+    data class Album(val browseId: String, val title: String?, val thumbnail: String?, val shared: String?) : Route("album:$browseId")
+    data class Playlist(val playlistId: String, val title: String?, val thumbnail: String?, val shared: String?) : Route("playlist:$playlistId")
+    data class ArtistItems(val browseId: String, val params: String?, val title: String) : Route("artist-items:$browseId:$params")
+    data object SoundChem : Route("sound-chem")
+}
+
+/** Which way the page stack moved, so the transition knows whether to fade through, push or pop. */
+private enum class NavKind { Tab, Push, Pop }
+
+private val TabRoots = listOf(Route.Home, Route.Mood, Route.Library)
+
+/** Windows at least this wide get the desktop dock; narrower ones keep the Android dock. */
+private val WideDockMinWidth = 1040.dp
+
+private fun initialRoute(): Route = when (AppSettings.current.defaultTab.uppercase()) {
+    "MOOD", "NEW", "RADIO" -> Route.Mood
+    "LIBRARY", "RECENT", "ARTISTS" -> Route.Library
+    "SEARCH" -> Route.Search
+    else -> Route.Home
+}
+
+/** The morph's shape clock: a smoothstep, so the island leaves the pill and lands on the window gently. */
+private fun morphEase(t: Float): Float = t * t * (3f - 2f * t)
+
+/** The share of the open where the pill's glass hands over to the player's own surface. */
+private const val MorphHandoff = 0.16f
+
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun ExhaleApp(player: DesktopPlayer) {
     val scope = rememberCoroutineScope()
     val state by player.state.collectAsState()
     val artists by DesktopPrefs.artists.collectAsState()
     val history by DesktopPrefs.history.collectAsState()
+    val settings = LocalSettings.current
+    val focusManager = LocalFocusManager.current
     val home = remember { HomeFeed(scope) }
     val search = remember { SearchModel(scope) }
-    var destination by remember { mutableStateOf(Destination.Home) }
+    val searchFocus = remember { FocusRequester() }
+
+    var stack by remember { mutableStateOf(listOf(initialRoute())) }
+    var navKind by remember { mutableStateOf(NavKind.Tab) }
     var onboarding by remember { mutableStateOf(!DesktopPrefs.onboardingCompleted) }
     var editingTaste by remember { mutableStateOf(false) }
-    var fullPlayer by remember { mutableStateOf(false) }
-    var lyricsOpen by remember { mutableStateOf(false) }
     var signingIn by remember { mutableStateOf(false) }
+    var discordLogin by remember { mutableStateOf(false) }
+
+    fun selectRoot(root: Route) {
+        if (stack.size == 1 && stack[0] == root) return
+        // Tapping the tab you're already under goes back to its top, like Android.
+        navKind = if (stack.first() == root) NavKind.Pop else NavKind.Tab
+        stack = listOf(root)
+    }
+
+    fun push(route: Route) {
+        if (stack.last().key == route.key) return
+        navKind = NavKind.Push
+        stack = stack + route
+    }
+
+    fun pop() {
+        if (stack.size <= 1) return
+        navKind = NavKind.Pop
+        stack = stack.dropLast(1)
+    }
 
     fun reloadHome(force: Boolean) {
         scope.launch {
@@ -145,7 +275,11 @@ fun ExhaleApp(player: DesktopPlayer) {
         )
     }
 
+    if (discordLogin) DiscordLoginWindow(onClose = { discordLogin = false })
+
     if (onboarding || editingTaste) {
+        SideEffect { ChromeNav.back = if (editingTaste) ({ editingTaste = false }) else null }
+        Box(Modifier.fillMaxSize().padding(top = LocalTitleBarHeight.current)) {
         OnboardingScreen(
             initialLanguages = DesktopPrefs.languages,
             initialArtists = artists,
@@ -156,314 +290,499 @@ fun ExhaleApp(player: DesktopPlayer) {
                 ContentLocale.apply(languages)
                 onboarding = false
                 editingTaste = false
-                destination = Destination.Home
+                navKind = NavKind.Tab
+                stack = listOf(Route.Home)
                 reloadHome(force = true)
             },
             onCancel = if (editingTaste) ({ editingTaste = false }) else null,
         )
+        }
         return
     }
 
     // The room is lit by what's playing, or by the first thing on Home before anything is.
     val ambientUrl = state.current?.thumbnail ?: home.topPicks.firstOrNull()?.image ?: history.firstOrNull()?.thumbnail
     val ambientColors by rememberArtworkColors(ambientUrl?.resizedThumbnail(120))
+    // Appearance → Colour from artwork follows the song that's actually playing.
+    LaunchedEffect(state.current?.id, ambientColors) {
+        ThemeSeed.artwork.value = if (state.current != null) ambientColors.firstOrNull() else null
+    }
 
-    val insets = ChromeInsets(start = RailReservedWidth, bottom = if (state.current != null) 104.dp else 24.dp)
+    val hasSong = state.current != null
     val appBackdrop = rememberLayerBackdrop()
+    val saveable = rememberSaveableStateHolder()
+    val density = LocalDensity.current
 
-    Box(Modifier.fillMaxSize()) {
-        // Everything the chrome floats over is recorded here, so the rail, top bar and mini player
-        // bend real pixels. They are siblings drawn *after* this box, never inside it.
-        Box(Modifier.fillMaxSize().layerBackdrop(appBackdrop)) {
+    // The dock folds while you scroll down through a page and opens again the moment you scroll back.
+    var dockCollapsed by remember { mutableStateOf(false) }
+    val collapseThreshold = with(density) { 28.dp.toPx() }
+    val dockScroll = remember(collapseThreshold) {
+        object : NestedScrollConnection {
+            private var travel = 0f
+
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (available.y > 0f) dockCollapsed = false
+                val dy = consumed.y
+                if (dy == 0f) return Offset.Zero
+                if (sign(dy) != sign(travel)) travel = 0f
+                travel += dy
+                if (travel < -collapseThreshold) dockCollapsed = true
+                else if (travel > collapseThreshold) dockCollapsed = false
+                return Offset.Zero
+            }
+        }
+    }
+    val route = stack.last()
+    LaunchedEffect(route) { dockCollapsed = false }
+
+    // The player grows out of the dock (the Android Dynamic Island morph) and shrinks back into it;
+    // on wide windows the cover flies between the dock and the player as it does.
+    var playerOpen by remember { mutableStateOf(false) }
+    var requestedPanel by remember { mutableStateOf(PlayerPanel.None) }
+    var pillBounds by remember { mutableStateOf<Rect?>(null) }
+    var islandBounds by remember { mutableStateOf<Rect?>(null) }
+    var dockArtBounds by remember { mutableStateOf<Rect?>(null) }
+    var playerArtBounds by remember { mutableStateOf<Rect?>(null) }
+    var rootHeight by remember { mutableFloatStateOf(1f) }
+    val morph = remember { Animatable(0f) }
+    LaunchedEffect(playerOpen) {
+        val reduced = AppSettings.current.reducedMotion
+        if (playerOpen) morph.animateTo(1f, if (reduced) tween(160) else PlayerOpenSpring)
+        else morph.animateTo(0f, if (reduced) tween(140) else PlayerCloseSpring)
+    }
+    LaunchedEffect(hasSong) { if (!hasSong) playerOpen = false }
+    val playerShown by remember { derivedStateOf { playerOpen || morph.value > 0.001f } }
+    // The player fills the window: whatever animates behind it can stop.
+    val playerCovering by remember { derivedStateOf { morph.value >= 0.999f } }
+
+    fun openPlayer(panel: PlayerPanel) {
+        requestedPanel = panel
+        playerOpen = true
+    }
+
+
+
+
+    // Opening a page from inside the player (an artist's name under the title) folds the player away first.
+    val navigator = remember {
+        AppNavigator(
+            openArtist = { id, name, thumbnail ->
+                playerOpen = false
+                push(Route.Artist(id, name, thumbnail))
+            },
+            openAlbum = { id, title, thumbnail ->
+                playerOpen = false
+                push(Route.Album(id, title, thumbnail, SharedArt.take()))
+            },
+            openPlaylist = { id, title, thumbnail ->
+                playerOpen = false
+                push(Route.Playlist(id, title, thumbnail, SharedArt.take()))
+            },
+            openArtistItems = { endpoint, title -> push(Route.ArtistItems(endpoint.browseId, endpoint.params, title)) },
+            openSoundChem = {
+                playerOpen = false
+                push(Route.SoundChem)
+            },
+        )
+    }
+
+    // Development aid: EXHALE_OPEN="album:<search>" (or artist: / playlist:) opens the first match's
+    // page on launch, so a page can be checked without clicking through to it.
+    LaunchedEffect(Unit) {
+        val spec = System.getenv("EXHALE_OPEN")?.takeIf { ':' in it } ?: return@LaunchedEffect
+        val filter = when (spec.substringBefore(':')) {
+            "artist" -> YouTube.SearchFilter.FILTER_ARTIST
+            "album" -> YouTube.SearchFilter.FILTER_ALBUM
+            "playlist" -> YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST
+            else -> return@LaunchedEffect
+        }
+        val item = withContext(Dispatchers.IO) { YouTube.search(spec.substringAfter(':'), filter).getOrNull()?.items?.firstOrNull() }
+        if (item != null) navigator.open(item, player)
+    }
+
+    BenchRunner(
+        openArtist = {
+            val artist = DesktopPrefs.artists.value.firstOrNull()
+            if (artist != null) navigator.openArtist(artist.id, artist.name, artist.thumbnail)
+        },
+        back = { pop() },
+        openPlayer = { openPlayer(PlayerPanel.None) },
+        closePlayer = { playerOpen = false },
+    )
+
+    val tabs = remember { listOf(DockTab("Home", NavIcons.Home), DockTab("Mood & Genres", NavIcons.New), DockTab("Library", NavIcons.Library)) }
+
+    // The title bar's back button: close the player first, then pages.
+    SideEffect {
+        ChromeNav.back = when {
+            playerOpen -> ({ playerOpen = false })
+            stack.size > 1 -> ({ pop() })
+            else -> null
+        }
+    }
+
+    CompositionLocalProvider(LocalNavigator provides navigator) {
+    BoxWithConstraints(Modifier.fillMaxSize().onSizeChanged { rootHeight = it.height.toFloat().coerceAtLeast(1f) }) {
+        val wide = maxWidth >= WideDockMinWidth
+        val latestWide by rememberUpdatedState(wide)
+
+        fun openSearch() {
+            selectRoot(Route.Search)
+            if (latestWide) runCatching { searchFocus.requestFocus() }
+        }
+
+        val windowState = LocalWindowState.current
+        DisposableEffect(Unit) {
+            AppShortcuts.handler = handler@{ event ->
+                if (event.type != KeyEventType.KeyDown) return@handler false
+                when {
+                    event.key == Key.F11 && windowState != null -> {
+                        windowState.placement =
+                            if (windowState.placement == WindowPlacement.Fullscreen) WindowPlacement.Floating else WindowPlacement.Fullscreen
+                        true
+                    }
+                    event.key == Key.MediaPlayPause -> { player.togglePlayPause(); true }
+                    event.key == Key.MediaNext -> { player.next(); true }
+                    event.key == Key.MediaPrevious -> { player.previous(); true }
+                    event.isCtrlPressed && (event.key == Key.F || event.key == Key.K) -> { openSearch(); true }
+                    event.isCtrlPressed && event.key == Key.P -> { player.togglePlayPause(); true }
+                    event.isCtrlPressed && event.key == Key.L && player.state.value.current != null -> { openPlayer(PlayerPanel.Lyrics); true }
+                    else -> false
+                }
+            }
+            // Reached only when no field wanted the key, so these need no modifier.
+            AppShortcuts.plain = plain@{ event ->
+                if (event.type != KeyEventType.KeyDown) return@plain false
+                val hasSong = player.state.value.current != null
+                when (event.key) {
+                    Key.Spacebar, Key.K -> if (hasSong) { player.togglePlayPause(); true } else false
+                    Key.N -> if (hasSong) { player.next(); true } else false
+                    Key.P -> if (hasSong) { player.previous(); true } else false
+                    Key.DirectionRight -> if (hasSong) { player.seekBy(AppSettings.current.seekStepSeconds.toDouble()); true } else false
+                    Key.DirectionLeft -> if (hasSong) { player.seekBy(-AppSettings.current.seekStepSeconds.toDouble()); true } else false
+                    Key.L -> if (hasSong) { openPlayer(PlayerPanel.Lyrics); true } else false
+                    Key.Q -> if (hasSong) { openPlayer(PlayerPanel.Queue); true } else false
+                    Key.M -> { player.toggleMute(); true }
+                    Key.S -> { player.toggleShuffle(); true }
+                    Key.Equals, Key.Plus -> { player.setVolume((player.state.value.volume + 5).coerceAtMost(100)); true }
+                    Key.Minus -> { player.setVolume((player.state.value.volume - 5).coerceAtLeast(0)); true }
+                    Key.Slash -> { openSearch(); true }
+                    else -> false
+                }
+            }
+            onDispose {
+                AppShortcuts.handler = null
+                AppShortcuts.plain = null
+            }
+        }
+
+        // Content clears the dock — and on narrow windows the mini player stacked above it too.
+        val insets = if (wide) {
+            ChromeInsets(start = 20.dp, bottom = DesktopDockHeight + 40.dp)
+        } else {
+            ChromeInsets(start = 20.dp, bottom = DockHeight + 28.dp + if (hasSong) DockHeight + 10.dp else 0.dp)
+        }
+
+        // Everything the chrome floats over is recorded here, so the dock and the pill bend real
+        // pixels. They are siblings drawn *after* this box, never inside it.
+        Box(
+            Modifier
+                .fillMaxSize()
+                // Once the player covers the window, the page under it isn't drawn at all: no glass, no
+                // moving background, nothing redrawn behind a player that hides it anyway.
+                .drawWithContent { if (morph.value < 0.999f) drawContent() }
+                .then(if (Bench.off("backdrop")) Modifier else Modifier.layerBackdrop(appBackdrop)),
+        ) {
             PageBackdropHost(
                 modifier = Modifier.fillMaxSize(),
                 background = {
-                    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
-                    AmbientGlow(ambientColors, Modifier.fillMaxSize())
+                    val ground = MaterialTheme.colorScheme.background
+                    Box(Modifier.fillMaxSize().background(ground))
+                    if (settings.animatedBackground && settings.ambientGlow && fluidBackgroundAvailable && hasSong && !Bench.off("fluid")) {
+                        // What's playing, moving slowly under every page — and under the glass, which bends it.
+                        FluidArtwork(state.current?.thumbnail?.resizedThumbnail(120), Modifier.fillMaxSize(), brightness = 0.5f, paused = playerCovering)
+                        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(ground.copy(alpha = 0.3f), ground.copy(alpha = 0.72f)))))
+                    } else {
+                        AmbientGlow(ambientColors, Modifier.fillMaxSize(), paused = playerCovering)
+                    }
                 },
             ) {
+                // Pages share one transition scope, so a card's cover can fly into the page it opens.
+                SharedTransitionLayout(Modifier.fillMaxSize()) {
                 AnimatedContent(
-                    targetState = destination,
+                    targetState = route,
+                    contentKey = { it.key },
                     transitionSpec = {
-                        (fadeIn(tween(260, delayMillis = 60)) +
-                            scaleIn(tween(360), initialScale = 0.975f) +
-                            slideInVertically(spring(0.85f, 300f)) { 24 }) togetherWith
-                            fadeOut(tween(140))
+                        if (AppSettings.current.reducedMotion) {
+                            fadeIn(tween(150)) togetherWith fadeOut(tween(100))
+                        } else {
+                            // Tuned for a pointer, not a thumb: short, critically damped, small distances. The
+                            // old phone-sized travel and 92% scale read as sluggish on a desktop.
+                            when (navKind) {
+                                // Fade-through: the old tab lets go first, the new one settles up out of 97.5%.
+                                NavKind.Tab -> (fadeIn(tween(220, delayMillis = 60)) + scaleIn(spring(dampingRatio = 1f, stiffness = 520f), initialScale = 0.975f)) togetherWith
+                                    (fadeOut(tween(110)) + scaleOut(tween(160), targetScale = 0.99f))
+                                // Push: the page slides in a short way from the right over the one it covers.
+                                NavKind.Push -> ((slideInHorizontally(spring(dampingRatio = 1f, stiffness = 460f)) { (it * 0.07f).toInt() } + fadeIn(tween(200))) togetherWith
+                                    (fadeOut(tween(140)) + scaleOut(tween(200), targetScale = 0.98f))).apply { targetContentZIndex = 1f }
+                                // Pop: the page underneath comes back up; the one leaving slides away on top.
+                                NavKind.Pop -> ((fadeIn(tween(200, delayMillis = 40)) + scaleIn(spring(dampingRatio = 1f, stiffness = 460f), initialScale = 0.98f)) togetherWith
+                                    (slideOutHorizontally(tween(180)) { (it * 0.07f).toInt() } + fadeOut(tween(140)))).apply { targetContentZIndex = -1f }
+                            }
+                        }
                     },
-                    label = "destination",
+                    modifier = Modifier.fillMaxSize().padding(top = LocalTitleBarHeight.current).nestedScroll(dockScroll),
+                    label = "route",
                 ) { current ->
-                    when (current) {
-                        Destination.Home -> HomeScreen(home, player, state, insets, onRetry = { reloadHome(force = true) })
-                        Destination.New -> NewScreen(home, player, state, insets)
-                        Destination.Radio -> RadioScreen(home, player, state, insets)
-                        Destination.Recent -> RecentlyPlayedScreen(player, state, insets)
-                        Destination.Artists -> ArtistsScreen(player, state, insets)
-                        Destination.Settings -> SettingsScreen(
-                            insets = insets,
-                            onSignIn = { signingIn = true },
-                            onEditTaste = { editingTaste = true },
-                            onHomeInputsChanged = { reloadHome(force = true) },
-                        )
+                    CompositionLocalProvider(LocalSharedScopes provides SharedScopes(this@SharedTransitionLayout, this@AnimatedContent)) {
+                    saveable.SaveableStateProvider(current.key) {
+                        when (current) {
+                            Route.Home -> HomeScreen(
+                                feed = home,
+                                player = player,
+                                state = state,
+                                insets = insets,
+                                onRetry = { reloadHome(force = true) },
+                                onOpenSettings = { push(Route.Settings) },
+                                onSignIn = { signingIn = true },
+                            )
+                            Route.Mood -> MoodAndGenresScreen(insets) { browseId, params, title -> push(Route.Browse(browseId, params, title)) }
+                            Route.Library -> LibraryScreen(home, player, state, insets, onOpenSettings = { push(Route.Settings) })
+                            Route.Search -> SearchScreen(search, player, state, insets, showField = !wide)
+                            Route.Settings -> SettingsScreen(
+                                insets = insets,
+                                onBack = { pop() },
+                                onSignIn = { signingIn = true },
+                                onEditTaste = { editingTaste = true },
+                                onHomeInputsChanged = { reloadHome(force = true) },
+                                onDiscordLogin = { discordLogin = true },
+                            )
+                            is Route.Browse -> BrowseScreen(current.browseId, current.params, current.title, player, state, insets, onBack = { pop() })
+                            is Route.Artist -> ArtistScreen(current.browseId, current.name, current.thumbnail, player, state, insets, onBack = { pop() })
+                            is Route.Album -> AlbumScreen(current.browseId, current.title, current.thumbnail, current.shared, player, state, insets, onBack = { pop() })
+                            is Route.Playlist -> PlaylistScreen(current.playlistId, current.title, current.thumbnail, current.shared, player, state, insets, onBack = { pop() })
+                            is Route.ArtistItems -> ArtistItemsScreen(current.browseId, current.params, current.title, player, state, insets, onBack = { pop() })
+                            Route.SoundChem -> SoundChemScreen(player, state, insets, onBack = { pop() })
+                        }
                     }
+                    }
+                }
                 }
             }
         }
 
         CompositionLocalProvider(LocalAppBackdrop provides appBackdrop) {
-            NavRail(
-                selected = destination,
-                onSelect = { destination = it },
-                modifier = Modifier.align(Alignment.CenterStart).padding(start = 16.dp),
-            )
-
-            AnimatedVisibility(
-                visible = state.current != null,
-                modifier = Modifier.align(Alignment.BottomCenter),
-                enter = slideInVertically(spring(0.7f, 260f)) { it * 2 } + fadeIn(tween(200)),
-                exit = slideOutVertically(tween(220)) { it * 2 } + fadeOut(tween(160)),
-            ) {
-                MiniPlayer(
+            if (wide) {
+                DesktopDock(
+                    tabs = tabs,
+                    selected = TabRoots.indexOf(stack.first()),
+                    searchSelected = stack.first() == Route.Search,
+                    compact = dockCollapsed,
                     state = state,
                     player = player,
-                    onOpen = {
-                        lyricsOpen = false
-                        fullPlayer = true
+                    searchQuery = search.query,
+                    searchFocus = searchFocus,
+                    onSearchQueryChange = search::updateQuery,
+                    onSearchSubmit = { search.search() },
+                    onSearchFocused = { selectRoot(Route.Search) },
+                    onTab = {
+                        focusManager.clearFocus()
+                        selectRoot(TabRoots[it])
                     },
-                    onOpenLyrics = {
-                        lyricsOpen = true
-                        fullPlayer = true
+                    onExpandPlayer = ::openPlayer,
+                    onIslandBounds = { islandBounds = it },
+                    onArtBounds = { dockArtBounds = it },
+                    artAlpha = { if (morph.value > 0.001f) 0f else 1f },
+                    onOpenSettings = {
+                        focusManager.clearFocus()
+                        push(Route.Settings)
                     },
-                    modifier = Modifier.padding(start = RailReservedWidth, end = 24.dp, bottom = 18.dp),
+                    // Fades as the player grows out of it, and returns as the player folds away.
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        // Faded out by a third of the way open; past that its glass isn't worth rendering.
+                        .drawWithContent { if (morph.value < 0.3f) drawContent() }
+                        .graphicsLayer { alpha = 1f - (morph.value / 0.3f).coerceIn(0f, 1f) }
+                        .padding(start = 24.dp, end = 24.dp, bottom = 18.dp),
+                )
+            } else {
+                val handoff: () -> Float = { 1f - (morph.value / MorphHandoff).coerceIn(0f, 1f) }
+                Column(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .widthIn(max = DockMaxWidth)
+                        .fillMaxWidth()
+                        .drawWithContent { if (morph.value < 0.3f) drawContent() }
+                        .graphicsLayer { alpha = 1f - (morph.value / 0.3f).coerceIn(0f, 1f) }
+                        .padding(start = 24.dp, end = 24.dp, bottom = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    // State A's pill rides above the dock; scrolled, it moves into the dock itself.
+                    AnimatedVisibility(
+                        visible = hasSong && !dockCollapsed,
+                        enter = fadeIn(tween(190, easing = LinearEasing)) +
+                            expandVertically(spring(Motion.AquamorphicDamping, Motion.AquamorphicStiffness), expandFrom = Alignment.Bottom) +
+                            scaleIn(spring(Motion.AquamorphicDamping, Motion.AquamorphicStiffness), initialScale = 0.9f, transformOrigin = TransformOrigin(0.5f, 1f)),
+                        exit = fadeOut(tween(190, easing = LinearEasing)) +
+                            shrinkVertically(spring(1f, 420f), shrinkTowards = Alignment.Bottom) +
+                            scaleOut(tween(190), targetScale = 0.9f, transformOrigin = TransformOrigin(0.5f, 1f)),
+                    ) {
+                        MiniPlayerPill(
+                            state = state,
+                            player = player,
+                            onExpand = { openPlayer(PlayerPanel.None) },
+                            onBounds = { pillBounds = it },
+                            modifier = Modifier.fillMaxWidth().graphicsLayer { alpha = handoff() },
+                        )
+                    }
+                    LiquidDock(
+                        tabs = tabs,
+                        selected = TabRoots.indexOf(stack.first()),
+                        searchSelected = stack.first() == Route.Search,
+                        collapsed = dockCollapsed,
+                        state = state,
+                        player = player,
+                        onTab = { selectRoot(TabRoots[it]) },
+                        onSearch = { selectRoot(Route.Search) },
+                        onExpandPlayer = { openPlayer(PlayerPanel.None) },
+                        onPillBounds = { pillBounds = it },
+                    )
+                }
+            }
+        }
+
+        if (playerShown && hasSong) {
+            // The page recedes behind the player as it opens.
+            Box(Modifier.fillMaxSize().graphicsLayer { alpha = morph.value.coerceIn(0f, 1f) }.background(Color.Black.copy(alpha = 0.5f)))
+            PlayerMorph(progress = { morph.value }, origin = { if (latestWide) islandBounds else pillBounds }) {
+                FullPlayer(
+                    state = state,
+                    player = player,
+                    onClose = { playerOpen = false },
+                    onDrag = { dy -> scope.launch { morph.snapTo((morph.value - dy / rootHeight * 1.4f).coerceIn(0f, 1f)) } },
+                    onDragEnd = {
+                        if (morph.value < 0.8f) {
+                            playerOpen = false
+                            // Already false after an earlier drag? Then the effect won't rerun; finish it here.
+                            scope.launch { morph.animateTo(0f, PlayerCloseSpring) }
+                        } else {
+                            scope.launch { morph.animateTo(1f, PlayerOpenSpring) }
+                        }
+                    },
+                    initialPanel = requestedPanel,
+                    onArtworkBounds = { playerArtBounds = it },
+                    artworkAlpha = { if (latestWide && dockArtBounds != null && morph.value < 0.999f) 0f else 1f },
                 )
             }
-
-            AnimatedVisibility(
-                visible = destination == Destination.Home,
-                enter = fadeIn(tween(220)) + slideInVertically(spring(0.8f, 320f)) { -it / 12 },
-                exit = fadeOut(tween(120)),
-            ) {
-                HomeTopBar(
-                    search = search,
-                    player = player,
-                    state = state,
-                    startInset = RailReservedWidth,
-                    onOpenSettings = { destination = Destination.Settings },
-                    onSignIn = { signingIn = true },
+            if (wide) {
+                FlyingArtwork(
+                    url = state.current!!.thumbnail,
+                    from = { dockArtBounds },
+                    to = { playerArtBounds },
+                    progress = { morph.value },
                 )
             }
         }
 
-        AnimatedVisibility(
-            visible = fullPlayer && state.current != null,
-            enter = fadeIn(tween(220)) + slideInVertically(spring(0.82f, 240f)) { it / 8 },
-            exit = fadeOut(tween(180)) + slideOutVertically(tween(260)) { it / 8 },
-        ) {
-            FullPlayer(
-                state = state,
-                player = player,
-                showLyrics = lyricsOpen,
-                onToggleLyrics = { lyricsOpen = !lyricsOpen },
-                onClose = { fullPlayer = false },
-            )
-        }
+        // Watching outlives the screen that started it. The picture's window belongs to the app, not
+        // to the player: fold the player away and it shrinks to a speck and keeps playing, rather than
+        // being destroyed and having to start the song over to come back.
+        val watching by player.videoMode.collectAsState()
+        if (watching) VideoSurfaceHost(player)
+    }
+    }
+}
+
+/** Opening: settles without a bounce, quick off the mark. Closing: stiffer, so it gets out of the way. */
+private val PlayerOpenSpring = spring<Float>(dampingRatio = 0.9f, stiffness = 210f)
+private val PlayerCloseSpring = spring<Float>(dampingRatio = 1f, stiffness = 330f)
+
+/**
+ * The Android DynamicIslandMorphShape, for a window: a rounded rect that grows out of the dock's
+ * now-playing island to the whole window. The spring already eases it, so the geometry follows the
+ * progress directly — width a touch ahead of height, so the island widens into a card and then rises
+ * to fill the window — and the corners relax from the island's radius as it goes. The player's own
+ * background is inside the shape from the start; its sections arrive in order through
+ * [LocalPlayerReveal] (see FullPlayer).
+ */
+@Composable
+private fun PlayerMorph(progress: () -> Float, origin: () -> Rect?, content: @Composable () -> Unit) {
+    val density = LocalDensity.current
+    val fallbackWidth = with(density) { 440.dp.toPx() }
+    val fallbackHeight = with(density) { DockHeight.toPx() }
+    val fallbackBottom = with(density) { 20.dp.toPx() }
+    val minCorner = with(density) { 28.dp.toPx() }
+
+    fun originIn(width: Float, height: Float): Rect = origin() ?: Rect(
+        left = (width - fallbackWidth) / 2f,
+        top = height - fallbackBottom - fallbackHeight,
+        right = (width + fallbackWidth) / 2f,
+        bottom = height - fallbackBottom,
+    )
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                val p = progress().coerceIn(0f, 1f)
+                val wide = (p * 1.12f).coerceAtMost(1f)
+                val o = originIn(size.width, size.height)
+                val left = lerp(o.left, 0f, wide)
+                val right = lerp(o.right, size.width, wide)
+                val top = lerp(o.top, 0f, p)
+                val bottom = lerp(o.bottom, size.height, wide)
+                val corner = lerp(maxOf(o.height / 2f, minCorner), 0f, sqrt(p))
+                shape = GenericShape { _, _ -> addRoundRect(RoundRect(left, top, right, bottom, CornerRadius(corner))) }
+                clip = true
+                shadowElevation = 30.dp.toPx() * (1f - p)
+            },
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = (progress() / MorphHandoff).coerceIn(0f, 1f) }
+                .background(Color(0xFF141116)),
+        )
+        CompositionLocalProvider(LocalPlayerReveal provides progress) { content() }
     }
 }
 
 /**
- * The floating glass capsule. The selection is one pill that slides between items on a spring —
- * like the Android dock's lens — rather than each item lighting up on its own.
+ * The cover in flight between the dock and the player. Drawn at one fixed size and scaled into
+ * place, so the image loads once instead of at every in-between size; both real covers hide while
+ * it's in the air and it hands back to them the instant it lands.
  */
 @Composable
-private fun NavRail(selected: Destination, onSelect: (Destination) -> Unit, modifier: Modifier = Modifier) {
-    val backdrop = LocalAppBackdrop.current ?: return
-    val index = Destination.entries.indexOf(selected)
-    val pillOffset by animateDpAsState((RailItemHeight + RailItemSpacing) * index, spring(dampingRatio = 0.66f, stiffness = 380f), label = "rail_pill")
-    // The pill stretches while it travels and settles back to size when it lands.
-    val travel = remember { androidx.compose.animation.core.Animatable(0f) }
-    LaunchedEffect(index) {
-        travel.snapTo(1f)
-        travel.animateTo(0f, spring(0.5f, 260f))
-    }
-
-    Column(
-        modifier = modifier
-            .width(72.dp)
-            .liquidGlass(RoundedCornerShape(36.dp), backdrop, tintAlpha = 0.36f, blurRadius = 56.dp)
-            .padding(vertical = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Image(appIcon, contentDescription = "Exhale", modifier = Modifier.size(36.dp))
-        Spacer(Modifier.height(12.dp))
-        Box {
-            Box(
-                Modifier
-                    .offset(x = 10.dp, y = pillOffset)
-                    .size(width = 52.dp, height = 34.dp)
-                    .graphicsLayer {
-                        scaleY = 1f + 0.22f * travel.value
-                        scaleX = 1f - 0.08f * travel.value
-                    }
-                    .clip(RoundedCornerShape(17.dp))
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)),
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(RailItemSpacing)) {
-                Destination.entries.forEach { destination ->
-                    RailItem(destination.label, destination.icon(), destination == selected, onClick = { onSelect(destination) })
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RailItem(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
-    val pressed by interaction.collectIsPressedAsState()
-    val squish by animateFloatAsState(if (pressed) 0.86f else if (hovered) 1.06f else 1f, spring(0.6f, 520f), label = "rail_press")
-    val tint by androidx.compose.animation.animateColorAsState(
-        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-        label = "rail_tint",
-    )
-
-    Column(
-        Modifier
-            .width(72.dp)
-            .height(RailItemHeight)
-            .hoverable(interaction)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
+private fun FlyingArtwork(url: String, from: () -> Rect?, to: () -> Rect?, progress: () -> Float) {
+    val canvasPx = 600f
+    val canvas = with(LocalDensity.current) { canvasPx.toDp() }
+    Box(Modifier.fillMaxSize()) {
+        AsyncImage(
+            model = url.resizedThumbnail(1200),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
             modifier = Modifier
-                .size(width = 52.dp, height = 34.dp)
+                .size(canvas)
                 .graphicsLayer {
-                    scaleX = squish
-                    scaleY = squish
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(22.dp))
-        }
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 2.dp),
-        )
-    }
-}
-
-/** Apple Music's floating mini player: transport left, now playing centre, extras right. */
-@Composable
-private fun MiniPlayer(
-    state: PlayerState,
-    player: DesktopPlayer,
-    onOpen: () -> Unit,
-    onOpenLyrics: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val song = state.current ?: return
-    val backdrop = LocalAppBackdrop.current ?: return
-    val duration = state.durationSeconds.coerceAtLeast(0.0)
-
-    Row(
-        modifier = modifier
-            .widthIn(max = 900.dp)
-            .fillMaxWidth()
-            .height(68.dp)
-            .liquidGlass(RoundedCornerShape(34.dp), backdrop, tintAlpha = 0.44f, blurRadius = 56.dp)
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        PressableIcon(onClick = player::previous, size = 38.dp) {
-            Icon(TransportIcons.Previous, "Previous", modifier = Modifier.size(22.dp))
-        }
-        PressableIcon(onClick = player::togglePlayPause, size = 44.dp) {
-            if (state.isLoading) {
-                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-            } else {
-                PlayPauseIcon(state.isPlaying, MaterialTheme.colorScheme.onSurface, Modifier.size(28.dp))
-            }
-        }
-        PressableIcon(onClick = player::next, size = 38.dp, enabled = state.hasNext) {
-            Icon(TransportIcons.Next, "Next", tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (state.hasNext) 1f else 0.4f), modifier = Modifier.size(22.dp))
-        }
-        Spacer(Modifier.width(10.dp))
-
-        Row(
-            Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(12.dp))
-                .clickable(onClick = onOpen)
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // A new song slides in over the old one instead of the text just changing.
-            AnimatedContent(
-                targetState = song,
-                transitionSpec = {
-                    (slideInVertically(spring(0.8f, 320f)) { it / 2 } + fadeIn(tween(220))) togetherWith
-                        (slideOutVertically(tween(180)) { -it / 2 } + fadeOut(tween(140)))
-                },
-                contentKey = { it.id },
-                modifier = Modifier.weight(1f),
-                label = "mini_song",
-            ) { current ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    AsyncImage(
-                        model = current.thumbnail.resizedThumbnail(226),
-                        contentDescription = "Open player",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(current.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            state.error ?: listOfNotNull(current.artists.joinToString { it.name }.ifBlank { null }, current.album?.name).joinToString(" — "),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (state.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        ScrubBar(
-                            position = state.positionSeconds,
-                            duration = duration,
-                            onSeek = player::seekTo,
-                            enabled = !state.isLoading,
-                            trackColor = Color.White.copy(alpha = 0.14f),
-                            fillColor = Color.White.copy(alpha = 0.75f),
-                            restHeight = 3.dp,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+                    val a = from()
+                    val b = to()
+                    val p = progress()
+                    if (a == null || b == null || p <= 0.001f || p >= 0.999f) {
+                        alpha = 0f
+                        return@graphicsLayer
                     }
-                }
-            }
-        }
-
-        Spacer(Modifier.width(10.dp))
-        IconButton(onClick = onOpenLyrics, modifier = Modifier.size(36.dp)) {
-            Icon(TransportIcons.Lyrics, "Lyrics", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-        }
-        IconButton(onClick = player::toggleMute, modifier = Modifier.size(36.dp)) {
-            Icon(
-                if (state.volume == 0) TransportIcons.VolumeOff else TransportIcons.VolumeUp,
-                "Mute",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
-            )
-        }
-        Slider(
-            value = state.volume / 100f,
-            onValueChange = { player.setVolume((it * 100).toInt()) },
-            colors = SliderDefaults.colors(
-                thumbColor = Color.White,
-                activeTrackColor = Color.White.copy(alpha = 0.8f),
-                inactiveTrackColor = Color.White.copy(alpha = 0.18f),
-            ),
-            modifier = Modifier.width(96.dp).height(24.dp),
+                    val e = p.coerceIn(0f, 1f)
+                    alpha = 1f
+                    transformOrigin = TransformOrigin(0f, 0f)
+                    translationX = lerp(a.left, b.left, e)
+                    // A shallow arc rather than a straight line: thrown up out of the dock, then settling.
+                    translationY = lerp(a.top, b.top, e) - sin(e * PI.toFloat()) * 42.dp.toPx()
+                    scaleX = lerp(a.width, b.width, e) / canvasPx
+                    scaleY = lerp(a.height, b.height, e) / canvasPx
+                    shape = RoundedCornerShape(lerp(12.dp.toPx(), 16.dp.toPx(), e) / scaleX.coerceAtLeast(0.01f))
+                    clip = true
+                    shadowElevation = 24.dp.toPx() * e
+                },
         )
     }
 }

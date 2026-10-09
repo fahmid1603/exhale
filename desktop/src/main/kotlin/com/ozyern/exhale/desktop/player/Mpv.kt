@@ -29,12 +29,26 @@ private interface LibMpv : Library {
     fun mpv_set_option_string(ctx: Pointer, name: String, data: String): Int
     fun mpv_set_property_string(ctx: Pointer, name: String, data: String): Int
     fun mpv_get_property(ctx: Pointer, name: String, format: Int, data: Pointer): Int
+    fun mpv_get_property_string(ctx: Pointer, name: String): Pointer?
+    fun mpv_free(data: Pointer)
     fun mpv_command(ctx: Pointer, args: Array<String>): Int
     fun mpv_observe_property(ctx: Pointer, replyUserdata: Long, name: String, format: Int): Int
     fun mpv_wait_event(ctx: Pointer, timeout: Double): Pointer
 }
 
-class Mpv(private val listener: Listener) : AutoCloseable {
+/**
+ * [windowId] is the native handle of a window to draw video into. Null — the usual case — keeps mpv
+ * audio-only with no video decoder at all. It can't be changed after mpv starts, so switching a song
+ * to video means building a second Mpv against the video surface; see DesktopPlayer.
+ */
+/** Somewhere to keep a stream while it plays; emptied by the operating system, not by us. */
+private val streamCacheDir: String by lazy {
+    java.io.File(System.getProperty("java.io.tmpdir"), "exhale-stream-cache")
+        .apply { mkdirs() }
+        .absolutePath
+}
+
+class Mpv(private val listener: Listener, windowId: Long? = null) : AutoCloseable {
     interface Listener {
         fun onFileLoaded() {}
         fun onEndOfFile() {}
@@ -48,39 +62,119 @@ class Mpv(private val listener: Listener) : AutoCloseable {
     private val ctx: Pointer = lib.mpv_create() ?: error("mpv_create returned null")
 
     @Volatile private var running = true
+
+    /** A video's separate sound track, waiting for the picture to open. */
+    @Volatile private var pendingAudio: String? = null
     private val eventThread: Thread
 
     init {
         // Audio only: never open a video window, never shell out to yt-dlp — stream URLs
         // are resolved by innertube before they reach mpv.
-        mapOf(
-            "vid" to "no",
-            "video" to "no",
-            "audio-display" to "no",
-            "ytdl" to "no",
-            "idle" to "yes",
-            "terminal" to "no",
-            "input-default-bindings" to "no",
-            "cache" to "yes",
-            "demuxer-max-bytes" to "64MiB",
-        ).forEach { (name, value) -> lib.mpv_set_option_string(ctx, name, value) }
+        buildMap {
+            if (windowId != null) {
+                // Draw into the surface the player put on screen, hardware-decoded, letterboxed.
+                put("wid", windowId.toString())
+                put("vid", "auto")
+                put("video", "auto")
+                put("vo", "gpu")
+                put("hwdec", "auto-safe")
+                put("keepaspect", "yes")
+                put("video-unscaled", "no")
+            } else {
+                put("vid", "no")
+                put("video", "no")
+            }
+            putAll(audioOnlyOptions)
+        }.forEach { (name, value) -> lib.mpv_set_option_string(ctx, name, value) }
 
         check(lib.mpv_initialize(ctx) >= 0) { "mpv_initialize failed" }
 
-        lib.mpv_observe_property(ctx, 0, "time-pos", FORMAT_DOUBLE)
+        // time-pos is read, not observed: observed, mpv reports it for every decoded audio frame, each
+        // report a round trip through JNA and the player's state. See eventLoop.
         lib.mpv_observe_property(ctx, 0, "duration", FORMAT_DOUBLE)
         lib.mpv_observe_property(ctx, 0, "pause", FORMAT_FLAG)
 
         eventThread = thread(name = "mpv-events", isDaemon = true) { eventLoop() }
     }
 
-    fun load(url: String, headers: StreamHeaders) {
+    private val audioOnlyOptions: Map<String, String>
+        get() = mapOf(
+            "audio-display" to "no",
+            "ytdl" to "no",
+            "idle" to "yes",
+            "terminal" to "no",
+            "input-default-bindings" to "no",
+            // Keep what has been read, on disk, and seek within it.
+            //
+            // YouTube's best renditions come from a client whose URLs are served strictly in order:
+            // ask for a piece from the middle and the answer is 403, however it's asked. Every seek
+            // would otherwise be a request from somewhere new, and every one of those is refused —
+            // which is why the picture stopped the moment the slider moved. With the stream kept
+            // here as it arrives, a seek reads from what's already down rather than asking again.
+            "cache" to "yes",
+            "cache-on-disk" to "yes",
+            "cache-dir" to streamCacheDir,
+            // Read ahead by the clock, not to the end of the file. Given room for the whole video mpv
+            // takes it at once, several megabytes a second — and pulled that hard these URLs stop
+            // answering partway through, for minutes, which ends the song mid-play. A minute and a
+            // half in hand covers any slow moment on the network and keeps the asking near the pace
+            // the picture is actually watched at.
+            "demuxer-readahead-secs" to "30",
+            "cache-secs" to "90",
+            "demuxer-max-bytes" to (96L * 1024 * 1024).toString(),
+            "demuxer-max-back-bytes" to (128L * 1024 * 1024).toString(),
+            // Opus through libopus, Xiph's reference decoder, ahead of ffmpeg's own; anything else as before.
+            "ad" to "libopus",
+            // The last buffer of one song runs straight into the next, with no reopened device between.
+            "gapless-audio" to "weak",
+            // Volume is only ever turned down (normalization, fades), so the path stays clean at 100%.
+            "volume-max" to "100",
+            // WASAPI, named: shared mode goes through Windows' own processing (Dolby Atmos, Sonic),
+            // exclusive mode can bypass it, and the volume mixer shows "Exhale" rather than "mpv".
+            "ao" to "wasapi",
+            "audio-client-name" to "Exhale",
+        )
+
+    /**
+     * mpv's `start` applies to whatever file opens next, so it is set on every load — a number to begin
+     * there, "none" to begin at the top. Opening at the place, rather than at the start and seeking once
+     * loaded, is what keeps a picture reloaded at a new quality from flashing its first scene.
+     */
+    private fun setStart(startSeconds: Double?) {
+        val value = startSeconds?.takeIf { it > 0.0 }?.let { String.format(java.util.Locale.US, "%.3f", it) } ?: "none"
+        lib.mpv_set_property_string(ctx, "start", value)
+    }
+
+    fun load(url: String, headers: StreamHeaders, startSeconds: Double? = null) {
+        setStart(startSeconds)
         lib.mpv_set_property_string(ctx, "user-agent", headers.userAgent)
         lib.mpv_set_property_string(ctx, "referrer", headers.referer.orEmpty())
         // http-header-fields is a comma-separated list, so only comma-free values go here.
         lib.mpv_set_property_string(ctx, "http-header-fields", headers.origin?.let { "Origin: $it" }.orEmpty())
         lib.mpv_set_property_string(ctx, "pause", "no")
         command("loadfile", url, "replace")
+    }
+
+    /**
+     * A video, whose sound is usually a stream of its own: YouTube's only rendition carrying both is
+     * 360p. The sound is added once the picture has loaded — audio-add needs a file already open, and
+     * the URL can't ride along in loadfile's options, which are comma-separated like the URLs are.
+     */
+    fun loadVideo(videoUrl: String, audioUrl: String?, headers: StreamHeaders, startSeconds: Double? = null) {
+        setStart(startSeconds)
+        lib.mpv_set_property_string(ctx, "user-agent", headers.userAgent)
+        lib.mpv_set_property_string(ctx, "referrer", headers.referer.orEmpty())
+        lib.mpv_set_property_string(ctx, "http-header-fields", headers.origin?.let { "Origin: $it" }.orEmpty())
+        lib.mpv_set_property_string(ctx, "pause", "no")
+        pendingAudio = audioUrl
+        command("loadfile", videoUrl, "replace")
+    }
+
+    /** The separate sound track for the picture that just loaded, if there is one. */
+    private fun attachPendingAudio() {
+        val url = pendingAudio ?: return
+        pendingAudio = null
+        command("audio-add", url, "select")
     }
 
     /** Flips mpv's own pause flag, whatever the UI last believed it was. */
@@ -100,8 +194,30 @@ class Mpv(private val listener: Listener) : AutoCloseable {
         lib.mpv_set_property_string(ctx, "volume", percent.coerceIn(0, 100).toString())
     }
 
+    fun setVolume(percent: Double) {
+        lib.mpv_set_property_string(ctx, "volume", String.format(java.util.Locale.US, "%.2f", percent.coerceIn(0.0, 100.0)))
+    }
+
+    /** Any mpv property by name (`af`, `speed`, `volume-gain`, `http-proxy`…). False if mpv refused it. */
+    fun setProperty(name: String, value: String): Boolean = lib.mpv_set_property_string(ctx, name, value) >= 0
+
     fun stop() {
         command("stop")
+    }
+
+    /** Any property as mpv formats it (`audio-out-params/channel-count`…), or null if it has none right now. */
+    fun getProperty(name: String): String? {
+        val data = lib.mpv_get_property_string(ctx, name) ?: return null
+        return try {
+            data.getString(0, "UTF-8")
+        } finally {
+            lib.mpv_free(data)
+        }
+    }
+
+    /** Reopens the audio device, so channel layout and exclusive mode changes apply mid-song. */
+    fun reloadAudioOutput() {
+        lib.mpv_command(ctx, arrayOf("ao-reload"))
     }
 
     private fun command(vararg args: String) {
@@ -109,30 +225,53 @@ class Mpv(private val listener: Listener) : AutoCloseable {
         if (result < 0) listener.onError("mpv ${args.first()}: ${lib.mpv_error_string(result)}")
     }
 
+    /**
+     * mpv's events, and the playback position. While a song plays the loop wakes five times a second
+     * to read where it is; paused or idle, it sleeps until mpv has something to say.
+     */
     private fun eventLoop() {
+        var loaded = false
+        var paused = false
+        var lastPosition = Double.NaN
         while (running) {
-            val event = lib.mpv_wait_event(ctx, -1.0)
+            val event = lib.mpv_wait_event(ctx, if (loaded && !paused) PositionPollSeconds else -1.0)
             when (event.getInt(0)) {
                 EVENT_SHUTDOWN -> return
-                EVENT_FILE_LOADED -> listener.onFileLoaded()
+                EVENT_FILE_LOADED -> {
+                    loaded = true
+                    attachPendingAudio()
+                    listener.onFileLoaded()
+                }
                 EVENT_END_FILE -> {
+                    loaded = false
                     // mpv_event_end_file { int reason; int error; ... }
-                    val data = event.getPointer(16) ?: continue
-                    when (data.getInt(0)) {
+                    val data = event.getPointer(16)
+                    when (data?.getInt(0)) {
                         END_REASON_EOF -> listener.onEndOfFile()
-                        END_REASON_ERROR -> listener.onError("Playback failed: ${lib.mpv_error_string(data.getInt(4))}")
+                        END_REASON_ERROR -> listener.onError("Playback failed: ${lib.mpv_error_string(data!!.getInt(4))}")
                     }
                 }
                 EVENT_PROPERTY_CHANGE -> {
                     // mpv_event_property { const char* name; mpv_format format; void* data; }
-                    val property = event.getPointer(16) ?: continue
-                    val format = property.getInt(8)
-                    val value = property.getPointer(16) ?: continue
-                    when (property.getPointer(0).getString(0)) {
-                        "time-pos" -> if (format == FORMAT_DOUBLE) listener.onPositionChanged(value.getDouble(0))
-                        "duration" -> if (format == FORMAT_DOUBLE) listener.onDurationChanged(value.getDouble(0))
-                        "pause" -> if (format == FORMAT_FLAG) listener.onPauseChanged(value.getInt(0) != 0)
+                    val property = event.getPointer(16)
+                    val format = property?.getInt(8)
+                    val value = property?.getPointer(16)
+                    if (property != null && value != null) {
+                        when (property.getPointer(0).getString(0)) {
+                            "duration" -> if (format == FORMAT_DOUBLE) listener.onDurationChanged(value.getDouble(0))
+                            "pause" -> if (format == FORMAT_FLAG) {
+                                paused = value.getInt(0) != 0
+                                listener.onPauseChanged(paused)
+                            }
+                        }
                     }
+                }
+            }
+            if (loaded && !paused) {
+                val position = position()
+                if (position != null && position != lastPosition) {
+                    lastPosition = position
+                    listener.onPositionChanged(position)
                 }
             }
         }
@@ -143,6 +282,16 @@ class Mpv(private val listener: Listener) : AutoCloseable {
         return if (lib.mpv_get_property(ctx, "time-pos", FORMAT_DOUBLE, out.pointer) >= 0) out.value else null
     }
 
+    /**
+     * How far into the stream has been fetched, as a timestamp. A seek beyond this has to be waited
+     * for, and on a stream that is only served in order it cannot be jumped to at all — so the player
+     * shows the listener where the picture actually reaches.
+     */
+    fun bufferedTo(): Double? {
+        val out = DoubleByReference()
+        return if (lib.mpv_get_property(ctx, "demuxer-cache-time", FORMAT_DOUBLE, out.pointer) >= 0) out.value else null
+    }
+
     override fun close() {
         running = false
         lib.mpv_wakeup(ctx)
@@ -151,6 +300,9 @@ class Mpv(private val listener: Listener) : AutoCloseable {
     }
 
     private companion object {
+        /** How often a playing song's position is read: often enough for progress, fades and the lyrics clock to steer by. */
+        const val PositionPollSeconds = 0.2
+
         const val FORMAT_FLAG = 3
         const val FORMAT_DOUBLE = 5
 

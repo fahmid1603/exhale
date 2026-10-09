@@ -6,7 +6,10 @@
 
 package com.ozyern.exhale.desktop.player
 
+import com.ozyern.exhale.desktop.data.AppSettings
 import com.ozyern.exhale.desktop.data.DesktopPrefs
+import com.ozyern.exhale.desktop.data.ListeningLog
+import com.ozyern.exhale.desktop.data.Settings
 import com.ozyern.exhale.innertube.YouTube
 import com.ozyern.exhale.innertube.models.AlbumItem
 import com.ozyern.exhale.innertube.models.ArtistItem
@@ -18,80 +21,443 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.Locale
+import kotlin.math.abs
+
+enum class RepeatMode { OFF, ALL, ONE }
 
 data class PlayerState(
     val queue: List<SongItem> = emptyList(),
     val index: Int = -1,
     val isLoading: Boolean = false,
     val isPlaying: Boolean = false,
-    val positionSeconds: Double = 0.0,
     val durationSeconds: Double = 0.0,
+    /** Bumped on every seek, so what follows this state rather than [DesktopPlayer.position] (Discord) still hears about jumps. */
+    val seekGeneration: Int = 0,
     val streamInfo: String? = null,
     val error: String? = null,
     val volume: Int = 100,
+    val shuffle: Boolean = false,
+    val repeat: RepeatMode = RepeatMode.OFF,
 ) {
     val current: SongItem? get() = queue.getOrNull(index)
-    val hasNext: Boolean get() = index + 1 < queue.size
+    val hasNext: Boolean get() = index + 1 < queue.size || (repeat == RepeatMode.ALL && queue.isNotEmpty())
     val hasPrevious: Boolean get() = index > 0
 }
 
-/** Queue + transport on top of [Mpv]. [scope] must run on the UI dispatcher. */
+/** Queue + transport on top of [Mpv], with the Player & audio settings applied. [scope] must run on the UI dispatcher. */
 class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
-    private val _state = MutableStateFlow(PlayerState())
+    private val _state = MutableStateFlow(
+        PlayerState(volume = if (AppSettings.current.rememberVolume) DesktopPrefs.volume else 100),
+    )
     val state: StateFlow<PlayerState> = _state.asStateFlow()
+
+    /**
+     * The playback position, kept out of [state] on purpose. mpv reports it many times a second, and
+     * as part of [state] every report recomposed every page, card and control holding it — the whole
+     * app, continuously, for as long as music played. Mpv reads it five times a second; the lyrics
+     * clock runs smoothly between readings on its own.
+     */
+    private val _position = MutableStateFlow(0.0)
+    val position: StateFlow<Double> = _position.asStateFlow()
+
+    private val _buffered = MutableStateFlow(0.0)
+
+    /** How far the stream has been fetched, in seconds. Everything past it is not there to seek to yet. */
+    val buffered: StateFlow<Double> = _buffered.asStateFlow()
 
     private var loadJob: Job? = null
     private var queueJob: Job? = null
+    private var skipJob: Job? = null
+    private var volumeSaveJob: Job? = null
 
-    private val mpv = Mpv(object : Mpv.Listener {
+    /** The song mpv actually has loaded — differs from the queue's current song after a restore. */
+    @Volatile private var loadedSongId: String? = null
+    @Volatile private var pendingSeek: Double? = null
+    @Volatile private var normalizationDb = 0.0
+    @Volatile private var fade = 1.0
+    private var lastPersistAt = 0L
+    private var unshuffled: List<SongItem>? = null
+
+    private val _sleepAt = MutableStateFlow<Long?>(null)
+    /** When the sleep timer pauses playback, or null. */
+    val sleepTimerEndsAt: StateFlow<Long?> = _sleepAt.asStateFlow()
+    private val _sleepAtEndOfSong = MutableStateFlow(false)
+    val sleepAtEndOfSong: StateFlow<Boolean> = _sleepAtEndOfSong.asStateFlow()
+    private var sleepJob: Job? = null
+
+    private var appliedFilters: String? = null
+    private var appliedSpeed: Float? = null
+    private var appliedProxy: String? = null
+    private var appliedGain: Double? = null
+    private var appliedChannels: String? = null
+    private var appliedExclusive: Boolean? = null
+    private var appliedResampler: String? = null
+    private var probeJob: Job? = null
+
+    // Your Sound Chem: how long the loaded song has actually been heard — playing time, not position,
+    // so seeking around a song doesn't count as listening to it.
+    @Volatile private var listenSong: SongItem? = null
+    @Volatile private var listenedMs = 0L
+    @Volatile private var lastListenTick = 0L
+
+    private val mpvListener = object : Mpv.Listener {
         // load() always unpauses, and mpv only reports pause when it *changes* — so a song that
-        // starts while already unpaused never sends one. Without this the UI showed "paused" over
-        // a playing song, and the button then asked mpv to unpause something already playing.
-        override fun onFileLoaded() = _state.update { it.copy(isLoading = false, isPlaying = true) }
-        override fun onEndOfFile() {
-            scope.launch { next() }
+        // starts while already unpaused never sends one.
+        override fun onFileLoaded() {
+            pendingSeek?.let {
+                pendingSeek = null
+                mpv.seekTo(it)
+            }
+            _state.update { it.copy(isLoading = false, isPlaying = true) }
+            WindowsMediaSession.setPlaying(true)
+            scope.launch { probeOutput() }
         }
-        override fun onError(message: String) =
-            _state.update { it.copy(isLoading = false, isPlaying = false, error = message) }
-        override fun onPositionChanged(seconds: Double) = _state.update { it.copy(positionSeconds = seconds) }
-        override fun onDurationChanged(seconds: Double) = _state.update { it.copy(durationSeconds = seconds) }
-        override fun onPauseChanged(paused: Boolean) =
-            _state.update { it.copy(isPlaying = !paused && it.current != null) }
-    })
 
+        override fun onEndOfFile() {
+            flushListen()
+            scope.launch { onTrackEnded() }
+        }
+
+        override fun onError(message: String) {
+            _state.update { it.copy(isLoading = false, isPlaying = false, error = message) }
+            scope.launch { scheduleAutoSkip() }
+        }
+
+        override fun onPositionChanged(seconds: Double) {
+            // Only called while playing, a few times a second; a gap longer than a second is a stall
+            // or a resume, not listening.
+            if (listenSong != null) {
+                val now = System.nanoTime()
+                if (lastListenTick != 0L) listenedMs += ((now - lastListenTick) / 1_000_000L).coerceIn(0L, 1_000L)
+                lastListenTick = now
+            }
+            _position.value = seconds
+            _buffered.value = mpv.bufferedTo() ?: 0.0
+            updateFade(seconds)
+            val now = System.currentTimeMillis()
+            if (now - lastPersistAt > 10_000) {
+                lastPersistAt = now
+                scope.launch { persistQueue() }
+            }
+        }
+
+        override fun onDurationChanged(seconds: Double) = _state.update { it.copy(durationSeconds = seconds) }
+        override fun onPauseChanged(paused: Boolean) {
+            lastListenTick = 0L
+            _state.update { it.copy(isPlaying = !paused && it.current != null) }
+            WindowsMediaSession.setPlaying(!paused)
+        }
+    }
+
+    // Rebuilt when the song switches between sound and picture: mpv's window is fixed once it starts.
+    @Volatile private var mpv: Mpv = Mpv(mpvListener)
+
+    private val _videoMode = MutableStateFlow(false)
+
+    /** Whether this song is playing as a video rather than as sound alone. */
+    val videoMode: StateFlow<Boolean> = _videoMode.asStateFlow()
+
+    private val _videoQualities = MutableStateFlow<List<Int>>(emptyList())
+
+    /** The heights this video has, for the picker — so it never offers 4K to a video that hasn't got it. */
+    val videoQualities: StateFlow<List<Int>> = _videoQualities.asStateFlow()
+
+    private val _videoAspect = MutableStateFlow(16f / 9f)
+
+    /** The shape of the picture now playing, so the surface can be cut to it rather than letterbox it. */
+    val videoAspect: StateFlow<Float> = _videoAspect.asStateFlow()
+
+    private val _videoAvailable = MutableStateFlow(false)
+
+    /** Whether YouTube has a video of what's playing — an official video, a live take — at all. */
+    val videoAvailable: StateFlow<Boolean> = _videoAvailable.asStateFlow()
+
+    @Volatile private var videoSurface: Long? = null
+
+    init {
+        scope.launch { AppSettings.state.collect { applyEngineSettings(it) } }
+        // Whether there's a video of whatever is playing — asked for the song itself, so it's known
+        // for a song restored from last time as well as one just started.
+        scope.launch {
+            state.map { it.current?.id }.distinctUntilChanged().collect { id ->
+                _videoAvailable.value = false
+                if (id == null) return@collect
+                val answer = runCatching { StreamResolver.hasVideo(id) }.getOrDefault(false)
+                if (_state.value.current?.id == id) _videoAvailable.value = answer
+            }
+        }
+        // Whatever lossless music is already on this PC, ready before the first song plays.
+        scope.launch { runCatching { LosslessLibrary.ensureDefaultSource() } }
+        restoreQueue()
+        // The first song after launch pays for everything the rest are spared — YouTube's player script,
+        // the client that works — so the restored song is worked out now, while the window is still coming up.
+        _state.value.current?.let { song -> scope.launch { runCatching { StreamResolver.warm(song.id) } } }
+    }
+
+    /** Settings that act on the audio engine itself. */
+    private fun applyEngineSettings(settings: Settings) {
+        val chain = AudioEffects.filterChain(settings)
+        if (chain != appliedFilters) {
+            // A libmpv without the upmix filter refuses the whole chain; keep the rest of it.
+            if (!mpv.setProperty("af", chain)) mpv.setProperty("af", AudioEffects.filterChain(settings.copy(spatialAudio = "OFF")))
+            appliedFilters = chain
+        }
+        val channels = AudioEffects.outputChannels(settings)
+        val resampler = AudioEffects.resamplerOptions(settings)
+        if (channels != appliedChannels || settings.exclusiveAudio != appliedExclusive || resampler != appliedResampler) {
+            val firstTime = appliedChannels == null
+            mpv.setProperty("audio-channels", channels)
+            mpv.setProperty("audio-exclusive", if (settings.exclusiveAudio) "yes" else "no")
+            mpv.setProperty("audio-swresample-o", resampler)
+            appliedChannels = channels
+            appliedExclusive = settings.exclusiveAudio
+            appliedResampler = resampler
+            if (!firstTime) {
+                mpv.reloadAudioOutput()
+                probeOutput()
+            }
+        }
+        if (settings.playbackSpeed != appliedSpeed) {
+            mpv.setProperty("speed", String.format(Locale.US, "%.2f", settings.playbackSpeed))
+            appliedSpeed = settings.playbackSpeed
+        }
+        val proxy = if (settings.proxyEnabled && settings.proxyType == "HTTP" && settings.proxyUrl.isNotBlank()) {
+            if ("://" in settings.proxyUrl) settings.proxyUrl.trim() else "http://${settings.proxyUrl.trim()}"
+        } else {
+            ""
+        }
+        if (proxy != appliedProxy) {
+            mpv.setProperty("http-proxy", proxy)
+            appliedProxy = proxy
+        }
+        // The keyboard's own media keys. Only worth claiming while Windows isn't already sending them
+        // to Exhale as session buttons.
+        MediaKeys.apply(this, settings.mediaKeys && !WindowsMediaSession.active)
+        applyVolume()
+    }
+
+    /**
+     * The user's level, scaled by the fade, over a pre-amp that brings every track to YouTube's
+     * loudness target. Like Android's normalizeFactor, it only ever turns a loud track down.
+     */
+    private fun applyVolume() {
+        val gain = if (AppSettings.current.normalization) normalizationDb else 0.0
+        if (gain != appliedGain) {
+            mpv.setProperty("volume-gain", String.format(Locale.US, "%.2f", gain))
+            appliedGain = gain
+        }
+        mpv.setVolume(_state.value.volume * fade)
+    }
+
+    /** Reads back what the audio device actually opened with — Settings and the player badge show it. */
+    private fun probeOutput() {
+        probeJob?.cancel()
+        probeJob = scope.launch {
+            delay(900)
+            val output = withContext(Dispatchers.IO) {
+                val channels = mpv.getProperty("audio-out-params/channel-count")?.toIntOrNull() ?: return@withContext null
+                AudioOutput(
+                    channels = channels,
+                    sampleRate = mpv.getProperty("audio-out-params/samplerate")?.toIntOrNull(),
+                    codec = mpv.getProperty("audio-codec-name"),
+                    driver = mpv.getProperty("current-ao"),
+                    exclusive = AppSettings.current.exclusiveAudio,
+                )
+            }
+            if (output != null) AudioOutputStatus.publish(output)
+        }
+    }
+
+    /** "Fade between songs": ease out over the last seconds of a track and back in at the start of the next. */
+    private fun updateFade(position: Double) {
+        val seconds = AppSettings.current.crossfadeSeconds
+        val duration = _state.value.durationSeconds
+        val target = if (seconds <= 0 || duration <= 0) {
+            1.0
+        } else {
+            val out = ((duration - position) / seconds).coerceIn(0.0, 1.0)
+            val `in` = (position / (seconds / 2.0).coerceAtLeast(0.5)).coerceIn(0.0, 1.0)
+            minOf(out, `in`)
+        }
+        if (abs(target - fade) >= 0.02 || (target == 1.0 && fade != 1.0)) {
+            fade = target
+            applyVolume()
+        }
+    }
+
+    /** Starts [index] of [queue]. With shuffle on, everything after the chosen song is shuffled. */
     fun play(queue: List<SongItem>, index: Int) {
         val song = queue.getOrNull(index) ?: return
+        if (_state.value.shuffle) {
+            unshuffled = queue
+            val rest = queue.filterIndexed { i, _ -> i != index }.shuffled()
+            _state.update { it.copy(queue = listOf(song) + rest, index = 0) }
+        } else {
+            unshuffled = null
+            _state.update { it.copy(queue = queue, index = index) }
+        }
+        load(_state.value.index)
+    }
+
+    private fun load(index: Int, startAt: Double? = null) {
+        val song = _state.value.queue.getOrNull(index) ?: return
         loadJob?.cancel()
+        skipJob?.cancel()
         mpv.stop()
-        _state.value = PlayerState(
-            queue = queue,
-            index = index,
-            isLoading = true,
-            volume = _state.value.volume,
-            durationSeconds = song.duration?.toDouble() ?: 0.0,
-        )
+        flushListen()
+        listenSong = song
+        loadedSongId = null
+        pendingSeek = null
+        fade = if (AppSettings.current.crossfadeSeconds > 0) 0.0 else 1.0
+        _state.update {
+            it.copy(
+                index = index,
+                isLoading = true,
+                isPlaying = false,
+                durationSeconds = song.duration?.toDouble() ?: 0.0,
+                streamInfo = null,
+                error = null,
+            )
+        }
+        _position.value = startAt ?: 0.0
+        _buffered.value = 0.0
+        // What Windows shows in its own panel and on the volume overlay.
+        WindowsMediaSession.nowPlaying(song.title, song.artists.joinToString { it.name })
         loadJob = scope.launch {
-            StreamResolver.resolve(song.id)
+            // Watching rather than listening: the picture and its own sound track, into the surface.
+            if (_videoMode.value && videoSurface != null) {
+                _videoAvailable.value = true
+                StreamResolver.resolveVideo(song.id)
+                    .onSuccess { video ->
+                        println("Exhale video: playing ${video.quality} from ${video.clientName}")
+                        ensureActive()
+                        normalizationDb = 0.0
+                        _state.update { it.copy(streamInfo = "Video · ${video.quality}") }
+                        _videoAspect.value = video.aspect
+                        _videoQualities.value = video.available
+                        DesktopPrefs.recordPlayed(song)
+                        loadedSongId = song.id
+                        applyVolume()
+                        mpv.loadVideo(video.videoUrl, video.audioUrl, video.headers, startAt?.takeIf { it > 1.0 })
+                        persistQueue()
+                    }
+                    .onFailure { error ->
+                        if (error is CancellationException) throw error
+                        // No video after all: fall back to the sound rather than stopping.
+                        println("Exhale video: failed — ${error.message}")
+                        _state.update { it.copy(error = error.message ?: "No video for this song") }
+                        setVideoMode(false)
+                    }
+                return@launch
+            }
+            // Both are asked at once. A folder on this PC answers in milliseconds where a public
+            // catalogue can take seconds, and no song should ever wait on one: YouTube's stream is
+            // ready when it's ready, a lossless copy gets a moment's grace to beat it, and whatever
+            // hasn't answered by then is dropped.
+            val youtube = async { StreamResolver.resolve(song.id) }
+            val lossless = if (AppSettings.current.preferLossless && LosslessLibrary.isConfigured) {
+                async { runCatching { LosslessLibrary.resolve(song) }.getOrNull() }
+            } else {
+                null
+            }
+            val fromYouTube = youtube.await()
+            val better = lossless?.let { withTimeoutOrNull(700) { it.await() } }
+            lossless?.cancel()
+            (better?.let { Result.success(it) } ?: fromYouTube)
                 .onSuccess { stream ->
                     ensureActive()
+                    normalizationDb = stream.loudnessDb?.let { (-it).coerceIn(-20.0, 0.0) } ?: 0.0
                     _state.update { it.copy(streamInfo = stream.describe()) }
                     DesktopPrefs.recordPlayed(song)
-                    mpv.load(stream.url, stream.headers)
+                    loadedSongId = song.id
+                    applyVolume()
+                    mpv.load(stream.url, stream.headers, startAt?.takeIf { it > 1.0 })
+                    persistQueue()
+                    prefetchNext(index)
                 }
                 .onFailure { error ->
                     if (error is CancellationException) throw error
-                    _state.update {
-                        it.copy(isLoading = false, error = error.message ?: error::class.simpleName)
-                    }
+                    _state.update { it.copy(isLoading = false, error = error.message ?: error::class.simpleName) }
+                    scheduleAutoSkip()
                 }
         }
+    }
+
+    /**
+     * Switch what's playing between sound and picture. Turning it on only sets the intent — the player
+     * puts a video surface on screen and hands its handle to [attachVideoSurface], because mpv can only
+     * be told which window to draw into as it starts.
+     */
+    fun setVideoMode(on: Boolean) {
+        if (_videoMode.value == on) return
+        println("Exhale video: mode -> $on")
+        _videoMode.value = on
+        if (!on) {
+            videoSurface = null
+            rebuildMpv(null)
+        }
+    }
+
+    /** The video surface is on screen: rebuild mpv against it and pick the song up where it was. */
+    /**
+     * The surface has gone — the player is collapsing, or the picture is being taken down. mpv must
+     * be told: it is drawing into a window of the toolkit's that no longer exists, and a handle that
+     * has been destroyed underneath it is not something to leave it holding.
+     */
+    fun detachVideoSurface(handle: Long) {
+        if (videoSurface != handle || handle == 0L) return
+        println("Exhale video: surface $handle gone")
+        videoSurface = null
+        if (_videoMode.value) rebuildMpv(null)
+    }
+
+    fun attachVideoSurface(handle: Long) {
+        if (!_videoMode.value || videoSurface == handle || handle == 0L) return
+        println("Exhale video: attaching surface $handle")
+        videoSurface = handle
+        rebuildMpv(handle)
+    }
+
+    /** Starts mpv again — drawing into [windowId], or into nothing — and resumes the song where it stood. */
+    /** Which window mpv is currently drawing into, so it isn't rebuilt onto the one it already has. */
+    @Volatile private var mpvWindowId: Long? = null
+
+    private fun rebuildMpv(windowId: Long?) {
+        if (mpvWindowId == windowId && loadedSongId != null) return
+        mpvWindowId = windowId
+        val resumeAt = _position.value
+        val index = _state.value.index
+        runCatching { mpv.close() }
+        mpv = Mpv(mpvListener, windowId)
+        // The new mpv knows none of the settings the old one had.
+        appliedFilters = null
+        appliedSpeed = null
+        appliedProxy = null
+        appliedGain = null
+        appliedChannels = null
+        appliedExclusive = null
+        appliedResampler = null
+        applyEngineSettings(AppSettings.current)
+        if (index in _state.value.queue.indices) load(index, startAt = resumeAt)
+    }
+
+    /** Works out the next song's URL while this one plays, so pressing skip starts it at once. */
+    private fun prefetchNext(index: Int) {
+        val next = _state.value.queue.getOrNull(index + 1) ?: return
+        scope.launch { runCatching { StreamResolver.warm(next.id) } }
     }
 
     /**
@@ -115,9 +481,10 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                     if (item is SongItem) {
                         // Only if the user hasn't moved on while the radio was loading.
                         if (_state.value.current?.id != item.id) return@onSuccess
-                        val index = result.items.indexOfFirst { it.id == item.id }
-                        val queue = if (index >= 0) result.items else listOf(item) + result.items
-                        _state.update { it.copy(queue = queue, index = index.coerceAtLeast(0)) }
+                        val others = result.items.filterNot { it.id == item.id }
+                        val rest = if (_state.value.shuffle) others.shuffled() else others
+                        _state.update { it.copy(queue = listOf(item) + rest, index = 0) }
+                        persistQueue()
                     } else {
                         play(result.items, result.currentIndex ?: 0)
                     }
@@ -144,41 +511,225 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
 
     fun togglePlayPause() {
         val current = _state.value
-        if (current.current == null || current.isLoading) return
+        val song = current.current ?: return
+        if (current.isLoading) return
+        // After a restore the queue is there but nothing is loaded yet: start where it was left.
+        if (loadedSongId != song.id) {
+            load(current.index, startAt = _position.value)
+            return
+        }
         mpv.togglePause()
     }
 
+    /** Fetch the picture again — a different quality was asked for — without losing the place. */
+    fun refreshVideo() {
+        val index = _state.value.index
+        if (index in _state.value.queue.indices) load(index, startAt = _position.value)
+    }
+
     fun seekTo(seconds: Double) {
-        if (_state.value.current == null) return
+        val current = _state.value
+        if (current.current == null) return
+        _position.value = seconds
+        _state.update { it.copy(seekGeneration = it.seekGeneration + 1) }
+        if (loadedSongId != current.current?.id) return
         mpv.seekTo(seconds)
-        _state.update { it.copy(positionSeconds = seconds) }
+    }
+
+    fun seekBy(deltaSeconds: Double) {
+        val current = _state.value
+        val limit = current.durationSeconds.takeIf { it > 0 } ?: Double.MAX_VALUE
+        seekTo((_position.value + deltaSeconds).coerceIn(0.0, limit))
     }
 
     fun next() {
         val current = _state.value
-        if (current.hasNext) {
-            play(current.queue, current.index + 1)
-        } else {
-            _state.update { it.copy(isPlaying = false, positionSeconds = 0.0) }
+        when {
+            current.index + 1 < current.queue.size -> load(current.index + 1)
+            current.repeat == RepeatMode.ALL && current.queue.isNotEmpty() -> load(0)
+            else -> {
+                _state.update { it.copy(isPlaying = false) }
+                _position.value = 0.0
+                _buffered.value = 0.0
+            }
         }
     }
 
     fun previous() {
         val current = _state.value
         // Like every music player: past the first few seconds, "previous" restarts the song.
-        if (current.positionSeconds > 3.0 || !current.hasPrevious) {
+        if (_position.value > 3.0 || !current.hasPrevious) {
             seekTo(0.0)
         } else {
-            play(current.queue, current.index - 1)
+            load(current.index - 1)
         }
+    }
+
+    /** Jump to a song already in the queue. */
+    fun skipTo(index: Int) {
+        if (index in _state.value.queue.indices) load(index)
+    }
+
+    private fun onTrackEnded() {
+        if (_sleepAtEndOfSong.value) {
+            _sleepAtEndOfSong.value = false
+            _state.update { it.copy(isPlaying = false) }
+            return
+        }
+        if (_state.value.repeat == RepeatMode.ONE) load(_state.value.index) else next()
+    }
+
+    /** Menu → Start radio: the song keeps playing and everything after it becomes its radio. */
+    fun startRadio(song: SongItem) {
+        queueJob?.cancel()
+        queueJob = scope.launch {
+            withContext(Dispatchers.IO) { YouTube.next(WatchEndpoint(videoId = song.id)) }
+                .onSuccess { result ->
+                    if (_state.value.current?.id != song.id) return@onSuccess
+                    val rest = result.items.filterNot { it.id == song.id }
+                    _state.update { it.copy(queue = listOf(song) + (if (it.shuffle) rest.shuffled() else rest), index = 0) }
+                    persistQueue()
+                }
+        }
+    }
+
+    /** Puts [song] straight after the one playing. */
+    fun playNext(song: SongItem) {
+        val current = _state.value
+        if (current.current == null) {
+            play(listOf(song), 0)
+            return
+        }
+        val queue = current.queue.toMutableList().apply { add(current.index + 1, song) }
+        _state.update { it.copy(queue = queue) }
+        persistQueue()
+    }
+
+    /** Onto the end of the queue. With nothing playing it simply starts. */
+    fun addToQueue(songs: List<SongItem>) {
+        if (songs.isEmpty()) return
+        val current = _state.value
+        if (current.current == null) {
+            play(songs, 0)
+            return
+        }
+        _state.update { it.copy(queue = it.queue + songs) }
+        persistQueue()
+    }
+
+    fun addToQueue(song: SongItem) = addToQueue(listOf(song))
+
+    /**
+     * Takes one song out. Removing the song playing moves on to the next; removing one before it keeps
+     * the same song playing, since the index it sits at has shifted.
+     */
+    fun removeFromQueue(index: Int) {
+        val current = _state.value
+        if (index !in current.queue.indices) return
+        val queue = current.queue.toMutableList().apply { removeAt(index) }
+        when {
+            queue.isEmpty() -> {
+                mpv.stop()
+                loadedSongId = null
+                _state.update { it.copy(queue = emptyList(), index = -1, isPlaying = false, isLoading = false) }
+            }
+            index < current.index -> _state.update { it.copy(queue = queue, index = it.index - 1) }
+            index > current.index -> _state.update { it.copy(queue = queue) }
+            else -> {
+                // The song playing: hold its place and start whatever fell into it.
+                _state.update { it.copy(queue = queue, index = index.coerceAtMost(queue.size - 1)) }
+                load(_state.value.index)
+            }
+        }
+        persistQueue()
+    }
+
+    /** Drags a song to another place in the queue, keeping whatever is playing playing. */
+    fun moveInQueue(from: Int, to: Int) {
+        val current = _state.value
+        if (from !in current.queue.indices || to !in current.queue.indices || from == to) return
+        val queue = current.queue.toMutableList()
+        val song = queue.removeAt(from)
+        queue.add(to, song)
+        val index = when (current.index) {
+            from -> to
+            in (minOf(from, to))..(maxOf(from, to)) -> if (from < to) current.index - 1 else current.index + 1
+            else -> current.index
+        }
+        _state.update { it.copy(queue = queue, index = index.coerceIn(0, queue.size - 1)) }
+        persistQueue()
+    }
+
+    /** Everything after the song playing, gone. */
+    fun clearUpNext() {
+        val current = _state.value
+        if (current.index < 0 || current.index >= current.queue.size - 1) return
+        _state.update { it.copy(queue = it.queue.take(it.index + 1)) }
+        persistQueue()
+    }
+
+    /** Menu → Sleep timer. Null turns it off; 0 means "at the end of this song". */
+    fun setSleepTimer(minutes: Int?) {
+        sleepJob?.cancel()
+        _sleepAt.value = null
+        _sleepAtEndOfSong.value = false
+        when {
+            minutes == null -> Unit
+            minutes <= 0 -> _sleepAtEndOfSong.value = true
+            else -> {
+                _sleepAt.value = System.currentTimeMillis() + minutes * 60_000L
+                sleepJob = scope.launch {
+                    delay(minutes * 60_000L)
+                    if (_state.value.isPlaying) mpv.togglePause()
+                    _sleepAt.value = null
+                }
+            }
+        }
+    }
+
+    private fun scheduleAutoSkip() {
+        if (!AppSettings.current.autoSkipOnError || !_state.value.hasNext) return
+        skipJob?.cancel()
+        skipJob = scope.launch {
+            delay(1_500)
+            next()
+        }
+    }
+
+    fun toggleShuffle() {
+        val current = _state.value
+        val song = current.current
+        if (!current.shuffle) {
+            unshuffled = current.queue
+            val rest = current.queue.filterIndexed { i, _ -> i != current.index }.shuffled()
+            _state.update { it.copy(shuffle = true, queue = listOfNotNull(song) + rest, index = if (song != null) 0 else -1) }
+        } else {
+            val original = unshuffled
+            val originalIndex = original?.indexOfFirst { it.id == song?.id } ?: -1
+            _state.update {
+                if (original != null && originalIndex >= 0) it.copy(shuffle = false, queue = original, index = originalIndex)
+                else it.copy(shuffle = false)
+            }
+            unshuffled = null
+        }
+        persistQueue()
+    }
+
+    fun cycleRepeat() {
+        _state.update { it.copy(repeat = RepeatMode.entries[(it.repeat.ordinal + 1) % RepeatMode.entries.size]) }
     }
 
     private var volumeBeforeMute = 100
 
     fun setVolume(percent: Int) {
         val clamped = percent.coerceIn(0, 100)
-        mpv.setVolume(clamped)
         _state.update { it.copy(volume = clamped) }
+        applyVolume()
+        volumeSaveJob?.cancel()
+        volumeSaveJob = scope.launch {
+            delay(500)
+            if (AppSettings.current.rememberVolume) DesktopPrefs.volume = clamped
+        }
     }
 
     fun toggleMute() {
@@ -191,8 +742,42 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         }
     }
 
+    private fun persistQueue() {
+        if (!AppSettings.current.persistentQueue) return
+        val current = _state.value
+        runCatching { DesktopPrefs.saveQueue(current.queue, current.index, _position.value) }
+    }
+
+    /** "Resume where you left off": the queue comes back paused, and play picks it up at the same second. */
+    private fun restoreQueue() {
+        if (!AppSettings.current.persistentQueue) return
+        val saved = DesktopPrefs.savedQueue() ?: return
+        _state.update {
+            it.copy(
+                queue = saved.songs,
+                index = saved.index,
+                durationSeconds = saved.songs[saved.index].duration?.toDouble() ?: 0.0,
+            )
+        }
+        _position.value = saved.positionSeconds
+    }
+
+    /** Writes down how long the song that's ending was heard, if it was heard long enough to count. */
+    private fun flushListen(immediately: Boolean = false) {
+        val song = listenSong ?: return
+        val heard = listenedMs
+        listenSong = null
+        listenedMs = 0L
+        lastListenTick = 0L
+        if (heard < ListeningLog.MinimumListenMs) return
+        if (immediately) ListeningLog.record(song, heard) else scope.launch(Dispatchers.IO) { ListeningLog.record(song, heard) }
+    }
+
     override fun close() {
+        flushListen(immediately = true)
+        persistQueue()
         loadJob?.cancel()
+        MediaKeys.stop()
         mpv.close()
     }
 }

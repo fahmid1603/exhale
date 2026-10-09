@@ -9,7 +9,6 @@ package com.ozyern.exhale.desktop.ui
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,7 +22,9 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import com.ozyern.exhale.desktop.data.LocalSettings
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -41,6 +42,12 @@ private const val GlowDriftX = 0.055f
 private const val GlowDriftY = 0.10f
 private const val GlowBreath = 0.09f
 private const val TwoPi = (2.0 * PI).toFloat()
+
+/** How often the slow backgrounds (this glow, the moving artwork) step: 30 times a second. */
+internal const val BackgroundTickMs = 33L
+
+/** The same, while Exhale isn't the focused window: 8 times a second, so it barely registers on the CPU. */
+internal const val UnfocusedTickMs = 125L
 
 private val artworkHttp = OkHttpClient()
 private val artworkColorCache = object : LinkedHashMap<String, List<Color>>(32, 0.75f, true) {
@@ -106,7 +113,9 @@ private fun extractColors(url: String): List<Color> {
  * down from the top, animated in the draw phase only.
  */
 @Composable
-fun AmbientGlow(colors: List<Color>, modifier: Modifier = Modifier, intensity: Float = 1f) {
+fun AmbientGlow(colors: List<Color>, modifier: Modifier = Modifier, intensity: Float = 1f, paused: Boolean = false) {
+    val isPaused by androidx.compose.runtime.rememberUpdatedState(paused)
+    if (!LocalSettings.current.ambientGlow) return
     val peakAlpha = 0.42f * intensity
     val presence by animateFloatAsState(
         targetValue = if (colors.isEmpty()) 0f else 1f,
@@ -115,12 +124,24 @@ fun AmbientGlow(colors: List<Color>, modifier: Modifier = Modifier, intensity: F
     )
     val blobs = remember(colors) { colors.take(3) }
 
+    // A 34-second drift moves less than a pixel between frames, so it steps 30 times a second rather
+    // than at the display's rate. On a 240 Hz panel, a per-frame clock here redrew the whole window —
+    // and re-blurred every piece of glass over it — 240 times a second, forever, even with nothing
+    // else moving.
     val phase = remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(Unit) {
+    val drifting = blobs.isNotEmpty()
+    val focused by androidx.compose.runtime.rememberUpdatedState(androidx.compose.ui.platform.LocalWindowInfo.current.isWindowFocused)
+    LaunchedEffect(drifting) {
+        if (!drifting) return@LaunchedEffect
+        val start = System.nanoTime()
         while (true) {
-            withInfiniteAnimationFrameMillis { millis ->
-                phase.floatValue = (millis % GlowDriftPeriodMs.toLong()) / GlowDriftPeriodMs
+            if (isPaused) {
+                delay(250L)
+                continue
             }
+            val millis = (System.nanoTime() - start) / 1_000_000L
+            phase.floatValue = (millis % GlowDriftPeriodMs.toLong()) / GlowDriftPeriodMs
+            delay(if (focused) BackgroundTickMs else UnfocusedTickMs)
         }
     }
 
