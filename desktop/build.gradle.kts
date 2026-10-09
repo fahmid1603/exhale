@@ -136,7 +136,7 @@ compose.desktop {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "Exhale"
             // MSI versions are MAJOR.MINOR.BUILD with MAJOR <= 255.
-            packageVersion = "1.0.18"
+            packageVersion = "1.0.20"
             vendor = "ozyern"
             // Shown as the app's name in Task Manager and Installed apps, so just the name.
             description = "Exhale"
