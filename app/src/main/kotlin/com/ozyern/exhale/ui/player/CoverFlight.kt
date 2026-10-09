@@ -396,7 +396,8 @@ fun CoverFlightOverlay(flight: CoverFlight, modifier: Modifier = Modifier) {
                     val look = frame.look
                     val w = frame.toFull
                     alpha = 1f
-                    shape = RoundedCornerShape(frame.cornerPx)
+                    // Never negative, whatever the look it is easing into says: that throws mid-draw.
+                    shape = RoundedCornerShape(frame.cornerPx.coerceAtLeast(0f))
                     clip = true
                     // Depth on the way — a little bigger, a soft shadow at the top of the arc —
                     // and, on the last leg, the player's own zoom and drift, so the hand-over is

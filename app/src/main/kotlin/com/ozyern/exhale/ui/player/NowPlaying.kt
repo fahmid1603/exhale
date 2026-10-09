@@ -762,7 +762,7 @@ internal fun NowPlayingScreen(
     // How the banner is drawn, for the travelling cover to leave from and land on: the same
     // breath of zoom and drift, the same sink and dim when paused, the same dissolve at the foot.
     val heroLook: (CoverLook) -> Unit = { look ->
-        val depth = pauseDepth.value
+        val depth = pauseDepth.value.coerceIn(0f, 1f) // a spring: it dips below 0 coming back
         val landing = g()
         val settle = 1f - landing
         val t = coverDrift.floatValue
@@ -839,7 +839,7 @@ internal fun NowPlayingScreen(
                             clip = true
                         }
                         // Paused, the picture recedes: smaller, rounded, a shade darker.
-                        val depth = pauseDepth.value
+                        val depth = pauseDepth.value.coerceIn(0f, 1f) // a spring: it dips below 0 coming back
                         val sink = 1f - PAUSE_SINK * depth
                         // A slow breath of zoom and a drift across the picture, gone as it
                         // shrinks into the header so it lands square.
@@ -860,7 +860,7 @@ internal fun NowPlayingScreen(
                     }
                     .drawWithContent {
                         drawContent()
-                        val depth = pauseDepth.value
+                        val depth = pauseDepth.value.coerceIn(0f, 1f) // a spring: it dips below 0 coming back
                         if (depth > 0.001f) drawRect(Color.Black.copy(alpha = 0.28f * depth))
                         // The dissolve at the foot belongs to the banner; the square it lands as
                         // has none.

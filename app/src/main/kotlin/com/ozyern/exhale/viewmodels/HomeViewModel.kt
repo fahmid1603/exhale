@@ -216,6 +216,9 @@ class HomeViewModel @Inject constructor(
                 val languages = preferredLanguages()
                 val fromTimeStamp = System.currentTimeMillis() - 86400000 * 7 * 2
 
+                // Top Picks first, not last: they take two round trips an artist, and waiting for the
+                // rest of Home before even starting them is what kept the top of the page empty.
+                launch(Dispatchers.IO) { runCatching { loadMadeForYou() }.onFailure { reportException(it) } }
                 launch { getQuickPicks() }
                 launch { loadSpeedDialSongs() }
                 launch { forgottenFavorites.value = database.forgottenFavorites().first().shuffled().take(20) }
@@ -282,9 +285,6 @@ class HomeViewModel @Inject constructor(
 
             viewModelScope.launch(Dispatchers.IO) {
                 loadSimilarRecommendations()
-            }
-            viewModelScope.launch(Dispatchers.IO) {
-                runCatching { loadMadeForYou() }.onFailure { reportException(it) }
             }
                     
             isInitialLoadComplete.value = true
@@ -391,8 +391,59 @@ class HomeViewModel @Inject constructor(
             picks.map { it.song }.filterExplicit(hideExplicit).filterVideo(hideVideo),
             languages,
         ).mapTo(HashSet()) { it.id }
-        madeForYou.value = picks.filter { it.song.id in allowed }.distinctBy { it.song.id }.take(10)
+        val chosen = picks.filter { it.song.id in allowed }.distinctBy { it.song.id }.take(10)
+        // An empty answer (offline, a slow network) leaves the saved picks on screen.
+        if (chosen.isNotEmpty()) {
+            madeForYou.value = chosen
+            savePicks(chosen)
+        }
     }
+
+    /**
+     * The last Top Picks, kept on the phone, so Home opens with them in place while fresh ones are
+     * worked out behind them — instead of the top of the page sitting empty for seconds after every
+     * launch. Only what the cards show is kept.
+     */
+    private val picksFile by lazy { java.io.File(context.filesDir, "top_picks.json") }
+
+    private fun savePicks(picks: List<com.ozyern.exhale.models.Recommendation>) = runCatching {
+        val array = org.json.JSONArray()
+        picks.forEach { pick ->
+            val s = pick.song
+            array.put(
+                org.json.JSONObject()
+                    .put("id", s.id).put("title", s.title).put("thumbnail", s.thumbnail)
+                    .put("explicit", s.explicit).put("duration", s.duration ?: -1).put("reason", pick.reason)
+                    .put("album", s.album?.let { org.json.JSONObject().put("name", it.name).put("id", it.id) })
+                    .put("artists", org.json.JSONArray().apply { s.artists.forEach { a -> put(org.json.JSONObject().put("name", a.name).put("id", a.id)) } }),
+            )
+        }
+        picksFile.writeText(array.toString())
+    }
+
+    private fun loadSavedPicks(): List<com.ozyern.exhale.models.Recommendation> = runCatching {
+        if (!picksFile.isFile) return@runCatching emptyList()
+        val array = org.json.JSONArray(picksFile.readText())
+        (0 until array.length()).map { i ->
+            val o = array.getJSONObject(i)
+            val artists = o.getJSONArray("artists")
+            com.ozyern.exhale.models.Recommendation(
+                song = com.ozyern.exhale.innertube.models.SongItem(
+                    id = o.getString("id"),
+                    title = o.getString("title"),
+                    artists = (0 until artists.length()).map { j ->
+                        val a = artists.getJSONObject(j)
+                        com.ozyern.exhale.innertube.models.Artist(a.getString("name"), a.optString("id").takeIf { it.isNotEmpty() && it != "null" })
+                    },
+                    album = o.optJSONObject("album")?.let { com.ozyern.exhale.innertube.models.Album(it.getString("name"), it.getString("id")) },
+                    duration = o.optInt("duration", -1).takeIf { it > 0 },
+                    thumbnail = o.getString("thumbnail"),
+                    explicit = o.optBoolean("explicit"),
+                ),
+                reason = o.optString("reason"),
+            )
+        }
+    }.getOrDefault(emptyList())
 
     private suspend fun loadSimilarRecommendations() {
         val hideExplicit = context.dataStore.get(HideExplicitKey, false)
@@ -566,6 +617,11 @@ class HomeViewModel @Inject constructor(
     }
 
     init {
+        // Last session's Top Picks, in place before the network has answered anything.
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = loadSavedPicks()
+            if (saved.isNotEmpty() && madeForYou.value == null) madeForYou.value = saved
+        }
         viewModelScope.launch(Dispatchers.IO) {
             load()
         }
