@@ -396,6 +396,13 @@ private fun categories(
                 ),
             ),
             Group(
+                "Notification area",
+                listOf(
+                    SwitchItem("Icon in the notification area", "The song playing, with play, next and previous, beside the clock.", s.trayIcon) { v -> update { it.copy(trayIcon = v) } }.withIcon(TransportIcons.Play, "tray_icon"),
+                    SwitchItem("Keep playing when closed", "Closing the window leaves the music on, in the notification area. Quit from its menu.", s.closeToTray) { v -> update { it.copy(closeToTray = v) } }.withIcon(TransportIcons.Pause, "close_to_tray"),
+                ),
+            ),
+            Group(
                 "Sound",
                 listOf(
                     SwitchItem(

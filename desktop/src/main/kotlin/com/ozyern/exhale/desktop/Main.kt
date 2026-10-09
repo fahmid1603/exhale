@@ -56,6 +56,7 @@ import com.ozyern.exhale.desktop.ui.LocalWindowState
 import com.ozyern.exhale.desktop.ui.ThemeSeed
 import com.ozyern.exhale.desktop.ui.account.SignInBrowser
 import com.ozyern.exhale.desktop.ui.shell.ExhaleTitleBar
+import com.ozyern.exhale.desktop.ui.shell.ExhaleTray
 import com.ozyern.exhale.desktop.ui.shell.LocalTitleBarHeight
 import com.ozyern.exhale.desktop.ui.shell.ResizeHandles
 import com.ozyern.exhale.desktop.ui.shell.TitleBarHeight
@@ -134,8 +135,19 @@ fun main() {
         // An update's installer closes Exhale the same way the window's close button does.
         AppLifecycle.exit = closeApp
 
+        // Closed with "Keep playing when closed" on, the window only hides: the music, the media
+        // session and the integrations carry on, and the notification area brings it back.
+        var windowVisible by remember { mutableStateOf(true) }
+        val closeWindow: () -> Unit = {
+            if (AppSettings.current.closeToTray) windowVisible = false else closeApp()
+        }
+        if (settings.trayIcon || !windowVisible) {
+            ExhaleTray(player?.getOrNull(), onShow = { windowVisible = true }, onQuit = closeApp)
+        }
+
         Window(
-            onCloseRequest = closeApp,
+            visible = windowVisible,
+            onCloseRequest = closeWindow,
             title = "Exhale",
             icon = appIcon,
             state = windowState,
@@ -186,7 +198,7 @@ fun main() {
                                 onSuccess = { ExhaleApp(it) },
                                 onFailure = { error -> PlayerUnavailable(error) },
                             )
-                            ExhaleTitleBar(titleBar, windowState, onClose = closeApp)
+                            ExhaleTitleBar(titleBar, windowState, onClose = closeWindow)
                             if (!WindowChrome.nativeSupported && windowState.placement == WindowPlacement.Floating) {
                                 ResizeHandles(window)
                             }

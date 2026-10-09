@@ -102,6 +102,10 @@ data class Settings(
     val animatedBackground: Boolean = true,
     /** Apple Music's moving covers in the player, where a song has one. */
     val motionCovers: Boolean = true,
+    /** Exhale's icon in the notification area, with the song and its controls. */
+    val trayIcon: Boolean = true,
+    /** Closing the window keeps the music playing from the notification area instead of quitting. */
+    val closeToTray: Boolean = false,
     val cardTilt: Boolean = true,
     // Lyrics
     val lyricsStyle: String = "KARAOKE",
@@ -198,6 +202,8 @@ private fun Settings.toProps(): Map<String, String?> = mapOf(
     "reduced_motion" to reducedMotion.toString(),
     "animated_background" to animatedBackground.toString(),
     "motion_covers" to motionCovers.toString(),
+    "tray_icon" to trayIcon.toString(),
+    "close_to_tray" to closeToTray.toString(),
     "card_tilt" to cardTilt.toString(),
     "spatial_audio" to spatialAudio,
     "exclusive_audio" to exclusiveAudio.toString(),
@@ -302,6 +308,8 @@ private fun settingsFrom(get: (String) -> String?): Settings {
         reducedMotion = b("reduced_motion", d.reducedMotion),
         animatedBackground = b("animated_background", d.animatedBackground),
         motionCovers = b("motion_covers", d.motionCovers),
+        trayIcon = b("tray_icon", d.trayIcon),
+        closeToTray = b("close_to_tray", d.closeToTray),
         cardTilt = b("card_tilt", d.cardTilt),
         spatialAudio = s("spatial_audio", d.spatialAudio),
         exclusiveAudio = b("exclusive_audio", d.exclusiveAudio),
