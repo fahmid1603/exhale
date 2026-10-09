@@ -107,6 +107,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
@@ -574,6 +576,13 @@ internal fun NowPlayingScreen(
         var last = System.nanoTime()
         var speed = 0f
         while (isActive) {
+            // Paused and come to rest: wait for the music instead of redrawing a still cover on
+            // every frame for as long as the player is open.
+            if (!driftPlaying && speed < 0.001f) {
+                speed = 0f
+                snapshotFlow { driftPlaying }.first { it }
+                last = System.nanoTime()
+            }
             withFrameNanos { now ->
                 val dt = ((now - last) / 1e9f).coerceIn(0f, 0.1f)
                 last = now

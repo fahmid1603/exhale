@@ -312,17 +312,25 @@ fun LiquidBackground(
     modifier: Modifier = Modifier,
     blobAlpha: Float = 0.45f,
 ) {
-    val transition = rememberInfiniteTransition(label = "liquid")
+    // One clock, stepped at about 30 frames a second and asleep with the app. Three endless
+    // transitions behind every page redrew the whole window — and every piece of glass sampling it —
+    // on every vsync, for blobs that take twenty seconds to go round once.
     val twoPi = (2.0 * PI).toFloat()
-    val p1 by transition.animateFloat(
-        0f, twoPi, infiniteRepeatable(tween(19_000, easing = LinearEasing)), label = "p1",
-    )
-    val p2 by transition.animateFloat(
-        0f, twoPi, infiniteRepeatable(tween(27_000, easing = LinearEasing)), label = "p2",
-    )
-    val p3 by transition.animateFloat(
-        0f, twoPi, infiniteRepeatable(tween(33_000, easing = LinearEasing)), label = "p3",
-    )
+    val clock = remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        var last = 0L
+        while (true) {
+            if (!com.ozyern.exhale.utils.isAppVisible) {
+                com.ozyern.exhale.utils.awaitAppVisible()
+                last = 0L
+            }
+            androidx.compose.runtime.withFrameNanos { now ->
+                if (last != 0L) clock.floatValue += ((now - last) / 1_000_000_000f).coerceAtMost(0.1f)
+                last = now
+            }
+            kotlinx.coroutines.delay(30)
+        }
+    }
 
     val palette = remember(colors, blobAlpha) {
         val safe = if (colors.size >= 3) colors else (colors + colors + colors).take(3)
@@ -348,6 +356,9 @@ fun LiquidBackground(
             )
         }
 
+        val p1 = clock.floatValue / 19f * twoPi
+        val p2 = clock.floatValue / 27f * twoPi
+        val p3 = clock.floatValue / 33f * twoPi
         blob(palette[0], w * (0.30f + 0.18f * sin(p1)), h * (0.26f + 0.14f * cos(p1 * 0.9f)), r)
         blob(palette[1], w * (0.74f + 0.16f * sin(p2)), h * (0.42f + 0.16f * cos(p2)), r * 0.9f)
         blob(palette[2], w * (0.48f + 0.22f * cos(p3)), h * (0.82f + 0.12f * sin(p3)), r * 1.1f)

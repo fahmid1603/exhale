@@ -33,11 +33,18 @@ import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.toBitmap
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /** The cover is shrunk to this many pixels a side: the field is soft gradients, and this is all it samples. */
 private const val Side = 48
+
+/** About 30 frames a second. */
+private const val FRAME_STEP_MS = 30L
 
 /**
  * Apple Music's moving artwork: four slowly counter-rotating, domain-warped samplings of the cover,
@@ -121,21 +128,28 @@ private class Cover(bitmap: Bitmap) {
 
 /**
  * The cover at [url] as a slowly moving field of its own colours. A new cover cross-fades in over 1.4s
- * rather than cutting. [paused] stops the clock (a hidden or collapsed player draws nothing anyone sees).
+ * rather than cutting.
+ *
+ * It moves only while music plays, and at 30 frames a second: the field drifts slowly enough that a
+ * phone's 120 Hz adds nothing to see, and every frame it moves is a full-screen shader pass — plus,
+ * behind the pages, every piece of glass chrome that samples it redrawing too. Paused, in the
+ * background, or [paused] by the caller, the clock stops and nothing is drawn again until it moves.
  */
 @Composable
 fun FluidArtworkBackground(
     url: String?,
     modifier: Modifier = Modifier,
     brightness: Float = 0.9f,
-    paused: Boolean = false,
+    /** Null: still whenever nothing is playing. */
+    paused: Boolean? = null,
 ) {
     val context = LocalContext.current
+    val playing = com.ozyern.exhale.LocalPlayerConnection.current?.isPlaying?.collectAsState()?.value ?: false
     var current by remember { mutableStateOf<Cover?>(null) }
     var previous by remember { mutableStateOf<Cover?>(null) }
     val blend = remember { Animatable(1f) }
     val clock = remember { mutableFloatStateOf(0f) }
-    val isPaused by rememberUpdatedState(paused)
+    val isPaused by rememberUpdatedState(paused ?: !playing)
 
     LaunchedEffect(url) {
         if (url == null) return@LaunchedEffect
@@ -150,14 +164,22 @@ fun FluidArtworkBackground(
         blend.animateTo(1f, tween(1_400, easing = LinearOutSlowInEasing))
     }
 
-    // One frame clock; drawing reads it, composition never does.
+    // One frame clock; drawing reads it, composition never does. Stepped, and asleep while still.
     LaunchedEffect(Unit) {
         var last = 0L
         while (true) {
+            if (isPaused || !com.ozyern.exhale.utils.isAppVisible) {
+                // Waiting rather than ticking: an idle frame loop still wakes the phone every vsync.
+                snapshotFlow { isPaused }.first { !it }
+                com.ozyern.exhale.utils.awaitAppVisible()
+                last = 0L
+            }
             androidx.compose.runtime.withFrameNanos { now ->
-                if (last != 0L && !isPaused) clock.floatValue += (now - last) / 1_000_000_000f
+                // Real time, so the drift keeps its speed whatever the step.
+                if (last != 0L) clock.floatValue += ((now - last) / 1_000_000_000f).coerceAtMost(0.1f)
                 last = now
             }
+            delay(FRAME_STEP_MS)
         }
     }
 
