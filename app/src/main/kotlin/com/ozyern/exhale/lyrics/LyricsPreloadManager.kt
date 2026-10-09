@@ -164,7 +164,9 @@ class LyricsPreloadManager @Inject constructor(
      */
     private suspend fun fetchLyricsForSong(song: MediaMetadata): String? {
         return try {
-            lyricsHelper.getLyrics(song, preferredProviderOnly = true)
+            // Every source, as when the song plays: what this saves is what the song will show,
+            // and asking only the first source saved its answer — or its miss — over better ones.
+            lyricsHelper.getLyrics(song, trackLookup = false)
         } catch (e: Exception) {
             Log.w(TAG, "Error fetching lyrics for ${song.title}: ${e.message}")
             null

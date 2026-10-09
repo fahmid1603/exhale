@@ -377,7 +377,14 @@ constructor(
                         text
                     }
                 }
-                if (lyrics != null && isMeaningfulLyrics(lyrics)) return lyrics
+                if (lyrics != null && isMeaningfulLyrics(lyrics)) {
+                    // Timed for another cut of the song: not shown, so a source that has this one wins.
+                    if (!LyricsFit.fits(lyrics, mediaMetadata.duration)) {
+                        GlobalLog.append(Log.DEBUG, "LyricsHelper", "${provider.name}: timing does not fit ${mediaMetadata.title} (${mediaMetadata.duration}s); passed over")
+                        continue
+                    }
+                    return lyrics
+                }
                 // A source that simply doesn't have the song is not an error worth reporting.
                 result.exceptionOrNull()?.takeIf { it !is NoSuchElementException }?.let(::reportException)
             } catch (e: CancellationException) {

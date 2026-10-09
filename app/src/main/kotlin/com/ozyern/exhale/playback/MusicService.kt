@@ -930,6 +930,11 @@ class MusicService :
                         }?.takeUnless {
                             it.lyrics == com.ozyern.exhale.db.entities.LyricsEntity.LYRICS_NOT_FOUND &&
                                 lyricsUpgradeChecked.add(mediaMetadata.id)
+                        }?.takeUnless {
+                            // Saved timing that cannot belong to this recording — another cut's, or
+                            // a preload that asked a single source — is looked up again.
+                            it.lyrics != com.ozyern.exhale.db.entities.LyricsEntity.LYRICS_NOT_FOUND &&
+                                !com.ozyern.exhale.lyrics.LyricsFit.fits(it.lyrics, mediaMetadata.duration)
                         }
                         val lyrics = if (cached == null) {
                             lyricsHelper.getLyrics(mediaMetadata).also { fetched ->
@@ -950,7 +955,13 @@ class MusicService :
                             cached.lyrics
                         }
 
-                        publishLiveLyrics(mediaMetadata, lyrics)
+                        // Looked up again and nothing better found: the saved copy is still better than none.
+                        val shown = if (lyrics == com.ozyern.exhale.db.entities.LyricsEntity.LYRICS_NOT_FOUND) {
+                            database.lyrics(mediaMetadata.id).first()?.lyrics ?: lyrics
+                        } else {
+                            lyrics
+                        }
+                        publishLiveLyrics(mediaMetadata, shown)
 
                         // A saved copy is kept for good, so a song first found with lyrics timed
                         // only by the line stayed that way even once a source had it word by word.
