@@ -270,6 +270,7 @@ fun YouTubeBrowseScreen(
     }
 
     TopAppBar(
+        colors = com.ozyern.exhale.ui.component.transparentTopBarColors(),
         title = { com.ozyern.exhale.ui.component.HeadingStyle { Text(browseResult?.title.orEmpty()) } },
         navigationIcon = {
             LiquidBackButton(

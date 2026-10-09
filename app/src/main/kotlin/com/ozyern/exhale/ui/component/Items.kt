@@ -885,9 +885,9 @@ fun SongGridItem(
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .basicMarquee()
-                .fillMaxWidth()
+            // Still, ending in an ellipsis, as Apple's grids do. Scrolling, a page of tiles had every title
+            // sliding at once, and mid-loop they drew past their own tile into the next.
+            modifier = Modifier.fillMaxWidth()
         )
     },
     subtitle = {
@@ -1115,9 +1115,9 @@ fun AlbumGridItem(
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .basicMarquee()
-                .fillMaxWidth()
+            // Still, ending in an ellipsis, as Apple's grids do. Scrolling, a page of tiles had every title
+            // sliding at once, and mid-loop they drew past their own tile into the next.
+            modifier = Modifier.fillMaxWidth()
         )
     },
     subtitle = {
@@ -1354,9 +1354,9 @@ fun PlaylistGridItem(
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .basicMarquee()
-                .fillMaxWidth()
+            // Still, ending in an ellipsis, as Apple's grids do. Scrolling, a page of tiles had every title
+            // sliding at once, and mid-loop they drew past their own tile into the next.
+            modifier = Modifier.fillMaxWidth()
         )
     },
     subtitle = {
@@ -1581,9 +1581,9 @@ fun YouTubeGridItem(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = if (item is ArtistItem) TextAlign.Center else TextAlign.Start,
-            modifier = Modifier
-                .basicMarquee()
-                .fillMaxWidth()
+            // Still, ending in an ellipsis, as Apple's grids do. Scrolling, a page of tiles had every title
+            // sliding at once, and mid-loop they drew past their own tile into the next.
+            modifier = Modifier.fillMaxWidth()
         )
     },
     subtitle = {

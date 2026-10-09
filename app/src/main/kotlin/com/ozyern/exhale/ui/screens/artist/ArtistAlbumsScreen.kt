@@ -141,6 +141,7 @@ fun ArtistAlbumsScreen(
         }
 
         TopAppBar(
+        colors = com.ozyern.exhale.ui.component.transparentTopBarColors(),
             title = { com.ozyern.exhale.ui.component.HeadingStyle { Text(artist?.artist?.name.orEmpty()) } },
             navigationIcon = {
                 LiquidBackButton(

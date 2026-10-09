@@ -367,6 +367,7 @@ fun NewReleaseScreen(
 
         // TopAppBar flotante
         TopAppBar(
+        colors = com.ozyern.exhale.ui.component.transparentTopBarColors(),
             modifier = Modifier.align(Alignment.TopCenter),
             title = { com.ozyern.exhale.ui.component.HeadingStyle { Text(stringResource(R.string.new_release_albums)) } },
             navigationIcon = {

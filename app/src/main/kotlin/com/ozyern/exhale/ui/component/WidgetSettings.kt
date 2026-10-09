@@ -174,6 +174,7 @@ fun WidgetSettings(
     }
 
     TopAppBar(
+        colors = com.ozyern.exhale.ui.component.transparentTopBarColors(),
         title = { Text(stringResource(R.string.widget_settings_title)) },
         navigationIcon = {
             LiquidBackButton(

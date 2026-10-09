@@ -295,6 +295,7 @@ fun ArtistItemsScreen(
     }
 
     TopAppBar(
+        colors = com.ozyern.exhale.ui.component.transparentTopBarColors(),
         title = { com.ozyern.exhale.ui.component.HeadingStyle { Text(title) } },
         navigationIcon = {
             LiquidBackButton(

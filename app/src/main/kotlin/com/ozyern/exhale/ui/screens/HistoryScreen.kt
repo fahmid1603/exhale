@@ -399,6 +399,7 @@ fun HistoryScreen(
     }
 
     TopAppBar(
+        colors = com.ozyern.exhale.ui.component.transparentTopBarColors(),
         title = {
             if (selection) {
                 val count = allWrappedItems.count { it.isSelected }
