@@ -2393,13 +2393,9 @@ class MainActivity : ComponentActivity() {
                                                         scaleY = recede
                                                         translationY = 22.dp.toPx() * leave
                                                         transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
-                                                        val blur = 12.dp.toPx() * leave
-                                                        renderEffect =
-                                                            if (blur > 0.5f && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                                                                androidx.compose.ui.graphics.BlurEffect(blur, blur, androidx.compose.ui.graphics.TileMode.Decal)
-                                                            } else {
-                                                                null
-                                                            }
+                                                        // No blur on the way out. Blurring the dock — itself glass, blurring what is behind it —
+                                                        // was an offscreen pass over a blurred layer on every frame of every open and close, the
+                                                        // most expensive thing drawn in the transition; it is fading out anyway.
                                                     },
                                         ) {
                                             if ((isSearchScreen || isSearchResultsRoute) && !active) {

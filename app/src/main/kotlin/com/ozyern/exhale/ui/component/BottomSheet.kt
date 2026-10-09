@@ -257,7 +257,11 @@ fun BottomSheet(
                                 // than arriving with it.
                                 val r = ((p - 0.1f) / 0.55f).coerceIn(0f, 1f)
                                 val e = r * r * (3f - 2f * r)
-                                alpha = e
+                                // Never quite zero once off the bound: a layer at alpha 0 is not drawn at
+                                // all, so the player's shaders, glass and images were all prepared on the
+                                // first frames of the motion, and those frames took 100 ms and more. At
+                                // 0.2% it is drawn — invisibly — while the sheet waits to move (see expand).
+                                alpha = if (p > 0f) maxOf(e, 0.002f) else 0f
                                 translationY = 56.dp.toPx() * (1f - e)
                                 val s = 0.97f + 0.03f * e
                                 scaleX = s
@@ -355,10 +359,14 @@ fun BottomSheet(
             }
         }
 
-        if (!state.isExpanded && (onDismiss == null || !state.isDismissed)) {
+        // Kept composed through the cover flight's open player, so a close does not begin by building
+        // the mini player — measured as a 117 ms first frame. Moved off-screen while the player is
+        // open, because the strip sits at the top of an expanded sheet and would take its taps.
+        if ((coverFlight || !state.isExpanded) && (onDismiss == null || !state.isDismissed)) {
             Box(
                 modifier =
                 Modifier
+                    .offset { if (state.isExpanded) IntOffset(0, 100_000) else IntOffset.Zero }
                     .graphicsLayer {
                         val p = state.progress.coerceIn(0f, 1f)
                         if (dynamicIslandMorph) {
@@ -447,6 +455,15 @@ class BottomSheetState(
     fun expand(animationSpec: AnimationSpec<Dp>, initialVelocity: Dp = 0.dp) {
         onAnchorChanged(EXPANDED_ANCHOR)
         coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            // Built before it moves. The sheet's content is only composed once it leaves the
+            // collapsed bound, and composing the whole player is one long frame — measured at 200 ms.
+            // The spring runs on the frame clock, so it came out of that frame already a third of
+            // the way up and the opening was a jump. Nudged off the bound by a hair (nothing on
+            // screen moves) the player is composed first, and the spring starts from rest after it.
+            if (animatable.value == collapsedBound && initialVelocity == 0.dp) {
+                animatable.snapTo(collapsedBound + 0.01.dp)
+                repeat(3) { androidx.compose.runtime.withFrameNanos { } }
+            }
             animatable.animateTo(animatable.upperBound!!, animationSpec, initialVelocity)
         }
     }

@@ -528,6 +528,9 @@ internal fun NowPlayingScreen(
         ImageRequest.Builder(context)
             .data(artUrl)
             .size(1200, 1200)
+            // The mini player's thumbnail stands in while the full size arrives: a soft cover,
+            // never the grey placeholder.
+            .placeholderMemoryCacheKey(mediaMetadata.thumbnailUrl)
             .build()
     }
     var artLoaded by remember(artUrl) { mutableStateOf(false) }

@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import coil3.imageLoader
 import coil3.request.ImageRequest
 import com.ozyern.exhale.LocalPlayerConnection
 import com.ozyern.exhale.ui.utils.highRes
@@ -337,6 +338,17 @@ fun CoverFlightOverlay(flight: CoverFlight, modifier: Modifier = Modifier) {
             }
     }
 
+    // The player's full-size cover, fetched as soon as the song changes rather than when the
+    // player opens: fetched then, the flight landed on a grey placeholder that sat there for most
+    // of a second before the cover arrived. A moment after the song starts, so it never competes
+    // with the song's own stream for the network, and only while the app is on screen.
+    LaunchedEffect(request, flight.enabled) {
+        if (!flight.enabled) return@LaunchedEffect
+        kotlinx.coroutines.delay(1_500)
+        com.ozyern.exhale.utils.awaitAppVisible()
+        context.imageLoader.enqueue(request)
+    }
+
     var origin by remember { mutableStateOf(Offset.Zero) }
     // Worked out in layout, used again in draw for the same frame.
     val current = remember { arrayOfNulls<CoverFlight.Frame>(1) }
@@ -348,7 +360,9 @@ fun CoverFlightOverlay(flight: CoverFlight, modifier: Modifier = Modifier) {
             .fillMaxSize()
             .onGloballyPositioned { origin = it.localToWindow(Offset.Zero) },
     ) {
-        if (away) AsyncImage(
+        // Always composed: building it on the first frame of a close was one more thing in a frame that
+        // already ran long. It is the image the prefetch above loads, so this decodes nothing extra.
+        if (flight.enabled) AsyncImage(
             model = request,
             contentDescription = null,
             contentScale = ContentScale.Crop,
