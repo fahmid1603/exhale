@@ -1327,10 +1327,13 @@ private fun ItemRow(item: Item) {
         is ChoiceItem -> RowShell(item.title, item.subtitle, item.icon, item.key) { ChoiceControl(item, accent) }
         is SliderItem -> SliderRow(item, accent)
         is ActionItem -> RowShell(item.title, item.subtitle, item.icon) {
-            if (item.destructive) {
-                OutlinedButton(onClick = item.onClick) { Text(item.label, color = MaterialTheme.colorScheme.error) }
-            } else {
-                FilledTonalButton(onClick = item.onClick) { Text(item.label) }
+            com.ozyern.exhale.desktop.ui.glass.LiquidButton(onClick = item.onClick) {
+                Text(
+                    item.label,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (item.destructive) MaterialTheme.colorScheme.error else Color.White,
+                )
             }
         }
         is CustomItem -> item.content()

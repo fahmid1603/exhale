@@ -15,6 +15,7 @@
 package com.ozyern.exhale.desktop.ui.glass
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.MutatorMutex
 import androidx.compose.foundation.background
@@ -48,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
@@ -85,6 +87,7 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
@@ -686,4 +689,109 @@ fun LiquidSegmented(
                 ),
         )
     }
+}
+
+// ============================================================================================
+// Button
+// ============================================================================================
+
+/**
+ * A capsule of glass, after the catalog's LiquidButton: held, it swells and leans after the pointer
+ * like something soft being pushed; on a desktop a soft light also follows the pointer across it while
+ * it hovers, so a button answers before it is clicked. [tint] colours the glass (an accent button).
+ */
+@Composable
+fun LiquidButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    tint: Color = Color.Unspecified,
+    enabled: Boolean = true,
+    content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
+) {
+    val backdrop = pageBackdrop()
+    val scope = rememberCoroutineScope()
+    val press = remember { Animatable(0f, 0.001f) }
+    val glow = remember { Animatable(0f, 0.001f) }
+    var pointer by remember { mutableStateOf(Offset.Unspecified) }
+    var pressAt by remember { mutableStateOf(Offset.Zero) }
+    val lean = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
+    val click by rememberUpdatedState(onClick)
+    androidx.compose.foundation.layout.Row(
+        modifier
+            .graphicsLayer { alpha = if (enabled) 1f else 0.45f }
+            .drawBackdrop(
+                backdrop = backdrop,
+                shape = { CircleShape },
+                effects = {
+                    vibrancy()
+                    blur(2.dp.toPx())
+                    lens(12.dp.toPx(), 24.dp.toPx())
+                },
+                highlight = { Highlight.Default.copy(alpha = 0.6f + 0.4f * press.value) },
+                shadow = { Shadow(radius = 10.dp, color = Color.Black.copy(alpha = 0.22f)) },
+                layerBlock = {
+                    // Swells a few pixels when held and leans after the pointer, never far.
+                    val scale = lerp(1f, 1f + 4.dp.toPx() / size.height, press.value)
+                    val reach = size.minDimension
+                    val offset = lean.value
+                    translationX = reach * kotlin.math.tanh(0.05f * offset.x / reach)
+                    translationY = reach * kotlin.math.tanh(0.05f * offset.y / reach)
+                    scaleX = scale
+                    scaleY = scale
+                },
+                onDrawSurface = {
+                    if (tint != Color.Unspecified) {
+                        drawRect(tint, blendMode = androidx.compose.ui.graphics.BlendMode.Hue)
+                        drawRect(tint.copy(alpha = 0.75f))
+                    } else {
+                        drawRect(Color.White.copy(alpha = 0.06f))
+                    }
+                    // The light under the pointer.
+                    val g = glow.value
+                    if (g > 0.001f && pointer.isSpecified) {
+                        drawRect(
+                            androidx.compose.ui.graphics.Brush.radialGradient(
+                                listOf(Color.White.copy(alpha = 0.22f * g), Color.Transparent),
+                                center = pointer,
+                                radius = size.minDimension * 1.6f,
+                            ),
+                            blendMode = androidx.compose.ui.graphics.BlendMode.Plus,
+                        )
+                    }
+                },
+            )
+            .then(
+                if (!enabled) Modifier else Modifier
+                    .onPointerEvent(PointerEventType.Enter) { e ->
+                        pointer = e.changes.first().position
+                        scope.launch { glow.animateTo(1f, spring(1f, 400f)) }
+                    }
+                    .onPointerEvent(PointerEventType.Move) { e -> pointer = e.changes.first().position }
+                    .onPointerEvent(PointerEventType.Exit) { scope.launch { glow.animateTo(0f, spring(1f, 300f)) } }
+                    .pointerInput(Unit) {
+                        inspectDragGestures(
+                            onDragStart = { down ->
+                                pressAt = down.position
+                                scope.launch { press.animateTo(1f, spring(0.5f, 300f)) }
+                            },
+                            onDragEnd = { up ->
+                                scope.launch { press.animateTo(0f, spring(0.5f, 300f)) }
+                                scope.launch { lean.animateTo(Offset.Zero, spring(0.5f, 300f)) }
+                                // A click is a release still on the button.
+                                if (up.position.x in 0f..size.width.toFloat() && up.position.y in 0f..size.height.toFloat()) click()
+                            },
+                            onDragCancel = {
+                                scope.launch { press.animateTo(0f, spring(0.5f, 300f)) }
+                                scope.launch { lean.animateTo(Offset.Zero, spring(0.5f, 300f)) }
+                            },
+                        ) { change, _ -> scope.launch { lean.snapTo(change.position - pressAt) } }
+                    },
+            )
+            .semantics { role = Role.Button }
+            .height(40.dp)
+            .padding(horizontal = 18.dp),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
 }

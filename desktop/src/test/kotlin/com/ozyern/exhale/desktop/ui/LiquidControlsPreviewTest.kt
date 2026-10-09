@@ -37,7 +37,7 @@ class LiquidControlsPreviewTest {
     @OptIn(ExperimentalComposeUiApi::class)
     @Test
     fun render() {
-        val scene = ImageComposeScene(width = 900, height = 640, density = Density(2f)) {
+        val scene = ImageComposeScene(width = 900, height = 760, density = Density(2f)) {
             val page = rememberLayerBackdrop()
             Box(Modifier.fillMaxSize()) {
                 Box(
@@ -57,6 +57,10 @@ class LiquidControlsPreviewTest {
                         LiquidSlider(value = 4f, onValueChange = {}, valueRange = -12f..12f, steps = 23, accent = Color(0xFFBF5AF2), modifier = Modifier.width(380.dp))
                         com.ozyern.exhale.desktop.ui.glass.LiquidSegmented(listOf("Off", "5.1", "7.1"), 1, {})
                         Box(Modifier.width(400.dp)) { com.ozyern.exhale.desktop.ui.glass.LiquidSegmented(listOf("Normal", "Sped up", "Nightcore", "Slowed", "Daycore", "Vaporwave"), 2, {}, accent = Color(0xFF30D158), fill = true) }
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            com.ozyern.exhale.desktop.ui.glass.LiquidButton(onClick = {}) { androidx.compose.material3.Text("Clear cache", color = Color.White) }
+                            com.ozyern.exhale.desktop.ui.glass.LiquidButton(onClick = {}) { androidx.compose.material3.Text("Sign out", color = Color(0xFFFF6B6B)) }
+                        }
                     }
                 }
             }
@@ -86,6 +90,12 @@ class LiquidControlsPreviewTest {
         scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press, androidx.compose.ui.geometry.Offset(370f, 494f))
         frames(10)
         scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move, androidx.compose.ui.geometry.Offset(420f, 494f))
+        frames(30)
+        // Hover the first button.
+        scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Release, androidx.compose.ui.geometry.Offset(420f, 494f))
+        frames(20)
+        scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move, androidx.compose.ui.geometry.Offset(130f, 600f))
+        scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move, androidx.compose.ui.geometry.Offset(150f, 604f))
         frames(30)
         val held = scene.render(t + 16_000_000L)
         val heldOut = File(System.getProperty("java.io.tmpdir"), "exhale-liquid-controls-held.png")
