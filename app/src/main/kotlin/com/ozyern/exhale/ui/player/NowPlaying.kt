@@ -711,7 +711,10 @@ internal fun NowPlayingScreen(
     var videoShown by remember(mediaMetadata.id) { mutableStateOf(false) }
     LaunchedEffect(videoMode) { if (!videoMode) videoShown = false }
     var videoMissing by remember(mediaMetadata.id) { mutableStateOf(com.ozyern.exhale.playback.MusicVideo.knownMissing(mediaMetadata.id)) }
-    LaunchedEffect(mediaMetadata.id, videoMode) {
+    // One fresh try when a stream dies mid-play, as the Windows app re-asks for its URL: a stale link
+    // is the usual reason, and a new one usually plays.
+    var videoRetry by remember(mediaMetadata.id) { mutableIntStateOf(0) }
+    LaunchedEffect(mediaMetadata.id, videoMode, videoRetry) {
         if (!videoMode || musicVideo != null || videoMissing) return@LaunchedEffect
         videoLoading = true
         val found = com.ozyern.exhale.playback.MusicVideo.find(mediaMetadata)
@@ -920,7 +923,14 @@ internal fun NowPlayingScreen(
                     isPlaying = isPlaying && !collapseStarted,
                     onFirstFrame = { videoShown = true },
                     onError = {
+                        val failed = musicVideo
                         musicVideo = null
+                        if (failed != null && videoRetry == 0) {
+                            com.ozyern.exhale.playback.MusicVideo.forgetStream(failed.videoId)
+                            videoShown = false
+                            videoRetry++
+                            return@MusicVideoSurface
+                        }
                         videoMode = false
                         android.widget.Toast.makeText(context, "Couldn't play this video", android.widget.Toast.LENGTH_SHORT).show()
                     },

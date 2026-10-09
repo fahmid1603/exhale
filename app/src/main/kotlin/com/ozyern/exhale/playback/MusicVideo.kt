@@ -38,6 +38,14 @@ object MusicVideo {
     private const val STREAM_TTL_MS = 4 * 60 * 60 * 1000L
     private const val MAX_DURATION_DRIFT_S = 45
 
+    /**
+     * A stream that stopped answering. YouTube's URLs go stale partway through a long video or after
+     * enough seeking, and the cure is a new one — so it is dropped, and the next [find] asks again.
+     */
+    fun forgetStream(videoId: String) {
+        streams.remove(videoId)
+    }
+
     /** Whether we already know there is no video, so the switch can be hidden without a request. */
     fun knownMissing(songId: String): Boolean = videoIds[songId] == ""
 

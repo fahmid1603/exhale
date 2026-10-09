@@ -811,26 +811,51 @@ object YTPlayerUtils {
      */
     suspend fun videoStreamForDisplay(videoId: String, maxHeight: Int = 720): Result<VideoStream> = runCatching {
         val signatureTimestamp = getSignatureTimestampOrNull(videoId)
-        val clients = listOf(MAIN_CLIENT) + STREAM_FALLBACK_CLIENTS.toList()
+        val isLoggedIn = YouTube.cookie != null
+        // The order the Windows app found works for pictures: visionOS, iPadOS and iOS first, whose
+        // URLs come ready to play. WEB_REMIX's are scrambled and hang on YouTube's player script
+        // parsing cleanly, and the Android clients' picture streams are withheld without a proof
+        // token — which is why taking the first client that answered so often meant no video.
+        val clients = (listOf(VISIONOS, IPADOS, IOS) + STREAM_FALLBACK_CLIENTS.toList() + MAIN_CLIENT).distinct()
+        var muxedFallback: VideoStream? = null
         for (client in clients) {
+            if (client.loginRequired && !isLoggedIn) continue
             val response = YouTube.player(videoId, null, client, signatureTimestamp).getOrNull() ?: continue
             if (response.playabilityStatus.status != "OK") continue
-            // Adaptive video first; the single-file 360p stream as a last resort, which plays where
-            // a picture-only stream is refused.
-            val candidates = (response.streamingData?.adaptiveFormats.orEmpty() + response.streamingData?.formats.orEmpty())
+            val streaming = response.streamingData ?: continue
+            val candidates = streaming.adaptiveFormats
                 .filter { !it.isAudio && (it.height ?: 0) in 1..maxHeight }
                 .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
                 .sortedWith(
-                    compareByDescending<PlayerResponse.StreamingData.Format> { it.mimeType.startsWith("video/mp4") && "avc1" in it.mimeType }
+                    // A direct URL first of all: a 720p that plays beats a 1080p that can't be
+                    // unscrambled. Then H.264 in MP4, which every phone decodes in hardware.
+                    compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
+                        .thenByDescending { it.mimeType.startsWith("video/mp4") && "avc1" in it.mimeType }
                         .thenByDescending { it.height ?: 0 }
                         .thenByDescending { it.fps ?: 0 },
                 )
             for (candidate in candidates.take(4)) {
                 val url = synchronized(decipherLock) { findUrlOrNull(candidate, videoId, client) } ?: continue
+                // Asked before it is handed over, as the Windows app does: a URL that is refused
+                // now would only become a black box and a "couldn't play" a second later.
+                if (!validateStatus(url, client.userAgent)) continue
                 return@runCatching VideoStream(url, client.userAgent, candidate.width ?: 0, candidate.height ?: 0, candidate.contentLength)
             }
+            // This client's one single-file rendition (360p, picture and sound) is kept back rather
+            // than played: a client further down may still have the real picture.
+            if (muxedFallback == null) {
+                val muxed = streaming.formats.orEmpty()
+                    .filter { (it.height ?: 0) in 1..maxHeight }
+                    .maxByOrNull { it.height ?: 0 }
+                if (muxed != null) {
+                    val url = synchronized(decipherLock) { findUrlOrNull(muxed, videoId, client) }
+                    if (url != null && validateStatus(url, client.userAgent)) {
+                        muxedFallback = VideoStream(url, client.userAgent, muxed.width ?: 0, muxed.height ?: 0, muxed.contentLength)
+                    }
+                }
+            }
         }
-        error("No video stream for $videoId")
+        muxedFallback ?: error("No video stream for $videoId")
     }
 
     /**
