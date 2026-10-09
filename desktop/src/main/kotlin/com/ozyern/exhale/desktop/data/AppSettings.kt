@@ -114,7 +114,7 @@ data class Settings(
     val lyricsView: String = "BESIDE",
     /** Positive shows lyrics earlier, negative later — for lyrics that run behind or ahead of the audio. */
     val lyricsOffsetMs: Int = 0,
-    val lyricsProviderOrder: List<String> = listOf("BetterLyrics", "SimpMusic", "LRCLIB", "KuGou"),
+    val lyricsProviderOrder: List<String> = com.ozyern.exhale.desktop.lyrics.LyricsRepository.defaultOrder,
     val lyricsDisabled: Set<String> = emptySet(),
     val preloadLyrics: Boolean = true,
     // Player & audio
@@ -247,6 +247,26 @@ private fun Settings.toProps(): Map<String, String?> = mapOf(
     "check_updates" to checkUpdates.toString(),
 )
 
+/** The lyrics source order saved before the Apple-catalogue and open sources came — never chosen, only kept. */
+private val LegacyLyricsOrder = listOf("BetterLyrics", "SimpMusic", "LRCLIB", "KuGou")
+
+/**
+ * [saved] with every source added since put back where [defaults] places it — just ahead of the
+ * source it comes before there — rather than at the bottom, where a new word-timed source would sit
+ * behind every line-timed one the listener never moved. An order identical to the old default was
+ * never chosen, so it simply becomes the new one.
+ */
+private fun withNewSources(saved: List<String>, defaults: List<String>): List<String> {
+    if (saved.isEmpty() || saved == LegacyLyricsOrder || saved == LegacyLyricsOrder + "YouTube Music") return defaults
+    val order = saved.distinct().toMutableList()
+    defaults.forEachIndexed { index, source ->
+        if (source in order) return@forEachIndexed
+        val next = defaults.drop(index + 1).firstOrNull { it in order }
+        if (next == null) order += source else order.add(order.indexOf(next), source)
+    }
+    return order
+}
+
 private fun settingsFrom(get: (String) -> String?): Settings {
     val d = Settings()
     fun s(key: String, default: String) = get(key)?.takeIf { it.isNotEmpty() } ?: default
@@ -284,8 +304,7 @@ private fun settingsFrom(get: (String) -> String?): Settings {
         lyricsSide = s("lyrics_side", d.lyricsSide),
         lyricsView = s("lyrics_view", d.lyricsView),
         lyricsOffsetMs = i("lyrics_offset_ms", d.lyricsOffsetMs).coerceIn(-3_000, 3_000),
-        // Providers added in a later version still show up, at the end.
-        lyricsProviderOrder = (csv("lyrics_provider_order").orEmpty() + d.lyricsProviderOrder).distinct(),
+        lyricsProviderOrder = withNewSources(csv("lyrics_provider_order").orEmpty(), d.lyricsProviderOrder),
         lyricsDisabled = csv("lyrics_disabled")?.toSet() ?: d.lyricsDisabled,
         preloadLyrics = b("preload_lyrics", d.preloadLyrics),
         audioQuality = s("audio_quality", d.audioQuality),

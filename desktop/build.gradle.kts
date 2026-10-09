@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.compose.multiplatform)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 kotlin {
@@ -23,6 +24,9 @@ dependencies {
     implementation(project(":kizzy"))
     // The Last.fm module's calls return ktor responses.
     implementation(libs.ktor.client.core)
+    // The online lyrics sources shared with the Android app: JSON replies and Genius's pages.
+    implementation(libs.ktor.serialization.json)
+    implementation(libs.jsoup)
     // The Android app's Material 3 colour generator (pure Java), for accents and artwork theming.
     implementation("com.github.Kyant0:m3color:2025.4")
 

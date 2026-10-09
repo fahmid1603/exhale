@@ -22,6 +22,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
@@ -100,7 +102,24 @@ internal object SongQuery {
  * The listener's source order breaks ties; a word-timed result beats a line-timed one.
  */
 object LyricsRepository {
-    val providerNames = listOf("BetterLyrics", "SimpMusic", "LRCLIB", "KuGou", "YouTube Music")
+    /** The sources the Android app added: Apple's catalogue first, then the community and open ones. */
+    private val OnlineSources: List<OnlineSource> =
+        listOf(LrcRed, Binimum, PaxSenix, LyricsPlus, Unison, Musixmatch, Megalobiz, Genius)
+
+    /**
+     * Every source, in the order they're asked out of the box — the same order as the Android app:
+     * the Apple-catalogue hosts first, the syllable-timed community sources, the line-timed
+     * databases, and plain text last.
+     */
+    val defaultOrder = listOf(
+        "lrc.red", "Binimum", "BetterLyrics", "PaxSenix", "LyricsPlus", "SimpMusic", "Unison",
+        "Musixmatch", "Megalobiz", "KuGou", "LRCLIB", "Genius", "YouTube Music",
+    )
+
+    val providerNames = defaultOrder
+
+    /** How long the sources that use it wait for the recording to be named before asking without. */
+    private const val IdentifyTimeoutMs = 2_500L
 
     /**
      * How long one source gets before the others are shown without it. Each source now tries several
@@ -230,7 +249,35 @@ object LyricsRepository {
         val asWritten = song.title != title || everyone != lead
         val album = song.album?.name
 
-        val providers = listOf<Pair<String, suspend () -> String?>>(
+        // Which recording this is, by ISRC — worked out once, by Binimum, and only if it is on: a
+        // source someone switched off is not contacted, not even to help the others. lrc.red and
+        // LyricsPlus can then ask for exactly this recording, so a single never gets its album
+        // cut's timing or the clean edit's words.
+        val recordingLock = Mutex()
+        var recordingAsked = false
+        var recording: Recording? = null
+        val recordingFor: suspend () -> Recording? = {
+            recordingLock.withLock {
+                if (!recordingAsked) {
+                    recordingAsked = true
+                    if (DesktopPrefs.isLyricsProviderEnabled(Binimum.name)) {
+                        recording = withTimeoutOrNull(IdentifyTimeoutMs) { Recordings.identify(song.id, title, lead, album, duration) }
+                    }
+                }
+                recording
+            }
+        }
+        val online = OnlineSources.map { source ->
+            source.name to suspend {
+                val known = if (source.usesRecording) recordingFor() else null
+                firstOf(
+                    { source.lyrics(title, lead, album, duration, known) },
+                    { if (credited != null) source.lyrics(title, credited, album, duration, known) else null },
+                )
+            }
+        }
+
+        val providers = online + listOf<Pair<String, suspend () -> String?>>(
             "BetterLyrics" to {
                 firstOf(
                     { BetterLyrics.getLyrics(title = title, artist = lead, album = album, durationSeconds = duration).getOrNull() },
@@ -415,8 +462,33 @@ object LyricsParser {
     fun parse(raw: String): List<LyricLine> {
         val trimmed = raw.trim()
         val isTtml = trimmed.startsWith("<") && (trimmed.contains("<tt", ignoreCase = true) || trimmed.contains("ns/ttml"))
-        val lines = if (isTtml) parseTtml(trimmed) else parseLrc(trimmed)
+        val lines = when {
+            isTtml -> parseTtml(trimmed)
+            // Word-stamped LRC goes through TTML, where a stamped run with no space after it is
+            // glued to the next as one word ("<31.83>e<31.99>nough") instead of shown as two.
+            wordTag.containsMatchIn(trimmed) -> enhancedLrcToTtml(withOffset(trimmed))?.let(::parseTtml)
+                ?.takeIf { it.isNotEmpty() } ?: parseLrc(trimmed)
+            else -> parseLrc(trimmed)
+        }
         return withWordTimings(lines.sortedBy { it.timeMs })
+    }
+
+    private val offsetTag = Regex("""^\[offset:\s*([+-]?\d+)\s*]""", RegexOption.IGNORE_CASE)
+
+    /** `[offset:+500]` means every line shows 500 ms earlier; ignored, the whole file ran late. */
+    private fun offsetOf(raw: String): Long =
+        raw.lineSequence().firstNotNullOfOrNull { offsetTag.find(it.trim())?.groupValues?.get(1)?.toLongOrNull() } ?: 0L
+
+    /** The file with its offset tag applied to every stamp, for the converters that don't read it. */
+    private fun withOffset(raw: String): String {
+        val offset = offsetOf(raw)
+        if (offset == 0L) return raw
+        val stamp = Regex("""([\[<])(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?([]>])""")
+        return stamp.replace(raw) { m ->
+            val (open, min, sec, frac, close) = m.destructured
+            val ms = (stampMs(min, sec, frac) - offset).coerceAtLeast(0L)
+            String.format(Locale.ROOT, "%s%02d:%02d.%03d%s", open, ms / 60_000, (ms / 1000) % 60, ms % 1000, close)
+        }
     }
 
     /** Index of the line being sung at [positionMs], or -1 before the first line. */
@@ -453,7 +525,7 @@ object LyricsParser {
     /** LRC, including enhanced LRC whose `<mm:ss.xx>` tags time each word. */
     private fun parseLrc(raw: String): List<LyricLine> {
         val out = ArrayList<LyricLine>()
-        for (rawLine in raw.lineSequence()) {
+        for (rawLine in withOffset(raw).lineSequence()) {
             val line = rawLine.trim()
             var cursor = 0
             val stamps = ArrayList<Long>()
