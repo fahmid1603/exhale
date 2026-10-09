@@ -140,16 +140,15 @@ fun FluidArtworkBackground(
     url: String?,
     modifier: Modifier = Modifier,
     brightness: Float = 0.9f,
-    /** Null: still whenever nothing is playing. */
-    paused: Boolean? = null,
+    /** Still while true — pass !isPlaying. It is the caller's to say: the background is drawn behind the pages, outside the player's scope. */
+    paused: Boolean,
 ) {
     val context = LocalContext.current
-    val playing = com.ozyern.exhale.LocalPlayerConnection.current?.isPlaying?.collectAsState()?.value ?: false
     var current by remember { mutableStateOf<Cover?>(null) }
     var previous by remember { mutableStateOf<Cover?>(null) }
     val blend = remember { Animatable(1f) }
     val clock = remember { mutableFloatStateOf(0f) }
-    val isPaused by rememberUpdatedState(paused ?: !playing)
+    val isPaused by rememberUpdatedState(paused)
 
     LaunchedEffect(url) {
         if (url == null) return@LaunchedEffect

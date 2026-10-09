@@ -849,6 +849,7 @@ private fun AppleLyricsBackground(mediaMetadata: MediaMetadata) {
                 com.ozyern.exhale.ui.component.FluidArtworkBackground(
                     url = thumbnailUrl,
                     brightness = 0.62f,
+                    paused = !(com.ozyern.exhale.LocalPlayerConnection.current?.isPlaying?.collectAsState()?.value ?: false),
                     modifier = Modifier.fillMaxSize(),
                 )
                 AsyncImage(

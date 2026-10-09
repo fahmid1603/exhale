@@ -2582,7 +2582,8 @@ fun PlayerBackground(
             }
 
             PlayerBackgroundStyle.FLUID -> {
-                com.ozyern.exhale.ui.component.FluidArtworkBackground(url = mediaMetadata?.thumbnailUrl)
+                val playing = com.ozyern.exhale.LocalPlayerConnection.current?.isPlaying?.collectAsState()?.value ?: false
+                com.ozyern.exhale.ui.component.FluidArtworkBackground(url = mediaMetadata?.thumbnailUrl, paused = !playing)
             }
 
             PlayerBackgroundStyle.GLOW_ANIMATED -> {

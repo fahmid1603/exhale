@@ -839,10 +839,14 @@ class MainActivity : ComponentActivity() {
                                 playerConnection?.mediaMetadata ?: MutableStateFlow(null)
                             }.collectAsState()
                             val artworkUrl = ambientArtwork?.thumbnailUrl
+                            val ambientPlaying by remember(playerConnection) {
+                                playerConnection?.isPlaying ?: MutableStateFlow(false)
+                            }.collectAsState()
                             if (artworkUrl != null) {
                                 com.ozyern.exhale.ui.component.FluidArtworkBackground(
                                     url = artworkUrl,
                                     brightness = 0.5f,
+                                    paused = !ambientPlaying,
                                     modifier = Modifier.matchParentSize(),
                                 )
                                 // Pages are read over this, so it is held back under a scrim that

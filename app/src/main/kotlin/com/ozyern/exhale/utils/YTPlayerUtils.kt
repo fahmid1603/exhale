@@ -250,7 +250,29 @@ object YTPlayerUtils {
      */
     private val bestEverScores = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
-    private fun ceilingKey(isLoggedIn: Boolean, codec: AudioCodec) = "ytBestScore_${if (isLoggedIn) "in" else "out"}_${codec.name}"
+    // A tier, not a bitrate: see [tierScore]. The key is new so a stored bitrate is never read as a tier.
+    private fun ceilingKey(isLoggedIn: Boolean, codec: AudioCodec) = "ytBestTier_${if (isLoggedIn) "in" else "out"}_${codec.name}"
+
+    /**
+     * Which quality tier a stream is: the preferred codec first, then YouTube's rendition (774 and
+     * 141 are the 256 kbps Premium renditions, 251 the ~160 kbps Opus everyone gets, 140 the 128 kbps
+     * AAC…). MAX mode stops looking once a stream is in the best tier this account has ever been given.
+     *
+     * It used to compare bitrates, and a bitrate is the song's, not the tier's: one song's Opus 251 runs
+     * 150 kbps, another's 136. A song whose best was below the best ever seen never "matched", so MAX
+     * waited out every slow client before starting it — seconds, on every song not played before.
+     */
+    private fun tierScore(format: PlayerResponse.StreamingData.Format, preferred: AudioCodec): Long =
+        codecPriority(format, preferred) * 100L + when (format.itag) {
+            774 -> 60
+            141 -> 50
+            251 -> 40
+            140 -> 30
+            250 -> 20
+            249 -> 10
+            139 -> 5
+            else -> (format.bitrate / 16_000).coerceIn(0, 59)
+        }
 
     private val ceilingPrefs by lazy {
         runCatching { com.ozyern.exhale.App.instance.getSharedPreferences("stream_ceiling", android.content.Context.MODE_PRIVATE) }.getOrNull()
@@ -457,7 +479,7 @@ object YTPlayerUtils {
             if (probeForBest && attempts.isNotEmpty()) {
                 // Every tenth song still hears every client out, so a better stream the account
                 // has since become entitled to (a new subscription, say) raises the ceiling.
-                val ceiling = if (resolveCount.incrementAndGet() % 10 == 0) 0L else bestEverScore(ceilingName)
+                val ceiling = if (resolveCount.incrementAndGet() % 40 == 0) 0L else bestEverScore(ceilingName)
                 val pending = attempts.values.toMutableSet()
                 var firstValidAt = 0L
                 while (pending.isNotEmpty()) {
@@ -465,7 +487,7 @@ object YTPlayerUtils {
                         .mapNotNull { runCatching { it.getCompleted() }.getOrNull() }
                         .filter { it.valid && it.format != null }
                     if (done.isNotEmpty() && firstValidAt == 0L) firstValidAt = System.currentTimeMillis()
-                    if (ceiling > 0L && done.any { formatScore(it.format!!, preferredCodec) >= ceiling }) break
+                    if (ceiling > 0L && done.any { tierScore(it.format!!, preferredCodec) >= ceiling }) break
                     val graceLeft = if (firstValidAt == 0L) Long.MAX_VALUE
                     else STRAGGLER_GRACE_MS - (System.currentTimeMillis() - firstValidAt)
                     if (graceLeft <= 0L) break
@@ -620,7 +642,7 @@ object YTPlayerUtils {
                     // is nothing left to wait for. The same stream MAX mode would have picked,
                     // without the grace period on every single play.
                     val ceiling = bestEverScore(ceilingName)
-                    if (ceiling > 0L && formatScore(bestSoFar.format, preferredCodec) >= ceiling) {
+                    if (ceiling > 0L && tierScore(bestSoFar.format, preferredCodec) >= ceiling) {
                         Timber.tag(logTag).i(
                             "${bestSoFar.clientName} matches the best stream this account gets " +
                                 "(${bestSoFar.format.bitrate}bps); stopping the probe"
@@ -736,7 +758,7 @@ object YTPlayerUtils {
             Timber.tag(logTag).i("Successfully obtained playback data with format: ${format.mimeType}, bitrate: ${format.bitrate}")
             val servedBy = streamUrl.toHttpUrlOrNull()?.queryParameter("c")
             streamClientsInOrder.firstOrNull { it.clientName.equals(servedBy, ignoreCase = true) }?.let { lastWorkingClient = it }
-            if (probeForBest) recordBestScore(ceilingName, formatScore(format, preferredCodec))
+            if (probeForBest) recordBestScore(ceilingName, tierScore(format, preferredCodec))
 
             streamUrlCache[buildCacheKey(videoId, format.itag)] =
                 CachedStreamUrl(
