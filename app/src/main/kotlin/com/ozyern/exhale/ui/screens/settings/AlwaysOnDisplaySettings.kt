@@ -8,6 +8,10 @@
 
 package com.ozyern.exhale.ui.screens.settings
 
+import androidx.compose.foundation.layout.WindowInsetsSides
+
+import androidx.compose.foundation.layout.only
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
@@ -283,8 +287,10 @@ fun AODSettings(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
+.windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
                 .verticalScroll(rememberScrollState())
+// Inside the scroll, so the rows run on up under the transparent bar rather than stopping below it.
+.windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Vertical))
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {

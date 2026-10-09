@@ -8,6 +8,10 @@
 
 package com.ozyern.exhale.ui.screens.settings
 
+import androidx.compose.foundation.layout.WindowInsetsSides
+
+import androidx.compose.foundation.layout.only
+
 import androidx.compose.ui.unit.sp
 import com.ozyern.exhale.utils.AppLanguage
 import com.ozyern.exhale.ui.component.PreferenceGroupDivider
@@ -400,8 +404,10 @@ fun AppearanceSettings(
 
     Column(
         Modifier
-            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-            .verticalScroll(rememberScrollState()),
+.windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+            .verticalScroll(rememberScrollState())
+// Inside the scroll, so the rows run on up under the transparent bar rather than stopping below it.
+.windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Vertical)),
     ) {
         PreferenceGroupTitle(
             title = stringResource(R.string.theme),

@@ -219,6 +219,17 @@ fun StorageSettings(
             )
         )
 
+        // Offline mode by hand, for a plane or a metered connection: Home keeps to what the phone
+        // has. Without it, offline mode still comes on by itself whenever there is no internet.
+        val (offlineMode, onOfflineModeChange) = rememberPreference(com.ozyern.exhale.constants.OfflineModeKey, false)
+        SwitchPreference(
+            title = { Text("Offline mode") },
+            description = "Home shows only songs on your phone: downloaded, saved or fully cached. Comes on by itself whenever there is no internet",
+            icon = { Icon(painterResource(R.drawable.offline), null) },
+            checked = offlineMode,
+            onCheckedChange = onOfflineModeChange,
+        )
+
         // Save to device as MP3: converted once at 320 kbps, for people whose other players,
         // cars or speakers want MP3. Off keeps the stream's own M4A, byte for byte.
         val (saveAsMp3, onSaveAsMp3Change) = rememberPreference(com.ozyern.exhale.constants.SaveAsMp3Key, false)

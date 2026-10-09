@@ -44,6 +44,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
@@ -136,6 +138,15 @@ fun HomeScreen(
     // Apple-Music declutter: the mood-chip carousel is off by default (still opt-in via
     // Settings → Appearance) — the reference Home has no chip row.
     val (showHomeCategoryChips) = rememberPreference(ShowHomeCategoryChipsKey, false)
+    val online by com.ozyern.exhale.utils.NetworkStatus.online.collectAsState()
+    val (offlineMode) = rememberPreference(com.ozyern.exhale.constants.OfflineModeKey, false)
+    val offline = offlineMode || !online
+    // Back online: fetch what failed while the phone had no connection.
+    var wasOffline by remember { mutableStateOf(false) }
+    LaunchedEffect(online) {
+        if (!online) wasOffline = true
+        else if (wasOffline) { wasOffline = false; viewModel.refresh() }
+    }
     val isLoggedIn = remember(innerTubeCookie) {
         "SAPISID" in parseCookieString(innerTubeCookie)
     }
@@ -321,8 +332,15 @@ fun HomeScreen(
                     )
                 }
 
+                // No internet, or offline mode on: what the phone can play by itself, first.
+                if (offline) {
+                    item(key = "home_offline", contentType = "offline") {
+                        HomeOfflineSection(manual = offlineMode, modifier = Modifier.animateItem())
+                    }
+                }
+
                 // Signed out: the card, one line of why and a white Sign in pill.
-                if (!isLoggedIn) {
+                if (!isLoggedIn && !offline) {
                     item(key = "home_sign_in", contentType = "sign_in") {
                         HomeSignInCard(onSignIn = { navController.navigate("login") })
                     }
@@ -350,7 +368,7 @@ fun HomeScreen(
                 // A page with nothing on it reads as a broken app; the same page saying why, and
                 // offering the one thing that works with no network, reads as an app that knows
                 // where it is.
-                if (feedIsEmpty && !isLoading) {
+                if (feedIsEmpty && !isLoading && !offline) {
                     item(key = "home_empty", contentType = "empty") {
                         HomeEmptyState(
                             onRetry = viewModel::refresh,

@@ -808,15 +808,10 @@ internal fun NowPlayingScreen(
         // The cover, edge to edge, dissolving into the mesh at its foot.
         if (!(heroClip != null && canvasRendered && !collapseStarted) && (!collapsePastHalf || heroShowing) && heroHeight > 0.dp) {
             DisposableEffect(artRequest) { onDispose { heroArtLoaded = false } }
-            AsyncImage(
-                model = artRequest,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                onState = {
-                    val ok = it is AsyncImagePainter.State.Success
-                    heroArtLoaded = ok
-                    if (ok) artLoaded = true
-                },
+            // The mini player's thumbnail under the full-size cover: the banner is never empty
+            // while the full size is still on its way, and sharpens when it arrives.
+            val heroThumb = mediaMetadata.thumbnailUrl?.let { com.ozyern.exhale.ui.component.rememberPinnedArtworkRequest(it) }
+            Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     // From the full-width banner to the header's square, in one piece: size and
@@ -826,18 +821,15 @@ internal fun NowPlayingScreen(
                         val toGlass = morphToGlass && glassThumbHome != null && sheetClose() < 0.01f
                         val thumb = (if (toGlass) GLASS_THUMB_SIZE else THUMB_SIZE).toPx()
                         val home = if (toGlass) glassThumbHome!! else sleeveHome
-                        // The banner starts under the strip at the top — the handle and "Playing
-                        // from" sit on the player, not on the picture — and ends where it did.
-                        val topPx = (statusBarTop + TOP_STRIP_HEIGHT).toPx()
                         val fullW = constraints.maxWidth.toFloat()
-                        val fullH = (heroHeight.toPx() - topPx).coerceAtLeast(1f)
+                        val fullH = heroHeight.toPx()
                         val w = (fullW + (thumb - fullW) * e).roundToInt().coerceAtLeast(1)
                         val h = (fullH + (thumb - fullH) * e).roundToInt().coerceAtLeast(1)
                         val placeable = measurable.measure(Constraints.fixed(w, h))
                         layout(constraints.maxWidth, h) {
                             placeable.placeRelative(
                                 (home.x * e).roundToInt(),
-                                (topPx + (home.y - topPx) * e).roundToInt(),
+                                (home.y * e).roundToInt(),
                             )
                         }
                     }
@@ -867,10 +859,7 @@ internal fun NowPlayingScreen(
                             shape = RoundedCornerShape((28f * depth).dp)
                             clip = true
                         } else if (landing <= 0.001f) {
-                            // The breath of zoom stays inside the frame instead of spilling up
-                            // over the strip.
-                            shape = androidx.compose.ui.graphics.RectangleShape
-                            clip = true
+                            clip = false
                         }
                     }
                     .drawWithContent {
@@ -888,7 +877,27 @@ internal fun NowPlayingScreen(
                             blendMode = BlendMode.DstIn,
                         )
                     },
-            )
+            ) {
+                if (heroThumb != null) {
+                    AsyncImage(
+                        model = heroThumb,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                AsyncImage(
+                    model = artRequest,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    onState = {
+                        val ok = it is AsyncImagePainter.State.Success
+                        heroArtLoaded = ok
+                        if (ok) artLoaded = true
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
         }
 
@@ -910,9 +919,8 @@ internal fun NowPlayingScreen(
                 onRenderedChanged = { canvasRendered = it },
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .offset(y = statusBarTop + TOP_STRIP_HEIGHT)
                     .fillMaxWidth()
-                    .height((heroHeight - statusBarTop - TOP_STRIP_HEIGHT).coerceAtLeast(1.dp)),
+                    .height(heroHeight),
             )
         }
         if (heroClip == null && canvasRendered) {
@@ -938,7 +946,7 @@ internal fun NowPlayingScreen(
                     }
                     .drawWithContent {
                         // Black only once the picture is there; until then the cover shows through.
-                        if (videoShown) drawRect(Color.Black, topLeft = Offset(0f, videoTopPx))
+                        if (videoShown) drawRect(Color.Black)
                         drawContent()
                         val pictureBottom = videoTopPx + size.width / videoAspect
                         val start = maxOf(pictureBottom, size.height * (1f - HERO_FADE_FRACTION))

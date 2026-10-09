@@ -6,6 +6,10 @@
 
 package com.ozyern.exhale.ui.component
 
+import androidx.compose.foundation.layout.WindowInsetsSides
+
+import androidx.compose.foundation.layout.only
+
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -94,8 +98,10 @@ fun WidgetSettings(
 
     Column(
         Modifier
-            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-            .verticalScroll(rememberScrollState()),
+.windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+            .verticalScroll(rememberScrollState())
+// Inside the scroll, so the rows run on up under the transparent bar rather than stopping below it.
+.windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Vertical)),
     ) {
         PreferenceGroupTitle(
             title = stringResource(R.string.widget_preview),

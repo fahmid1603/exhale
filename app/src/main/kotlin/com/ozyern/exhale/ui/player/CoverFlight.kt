@@ -155,8 +155,12 @@ class CoverFlight {
 
     /** True while the travelling cover stands in for both real ones. */
     fun inFlight(): Boolean {
-        if (!enabled || mini() == null) return false
+        // Progress is read first, every time. Callers decide visibility in draw and layout
+        // blocks, which re-run only when what they last read changes: returning before reading it
+        // — the player not built yet on a cold start, no mini cover measured yet — left those
+        // blocks deaf to the sheet moving, and the whole first flight drew nothing.
         val p = progress()
+        if (!enabled || mini() == null) return false
         return p > REST && p < 1f - REST
     }
 
@@ -341,9 +345,10 @@ fun CoverFlightOverlay(flight: CoverFlight, modifier: Modifier = Modifier) {
     // player opens: fetched then, the flight landed on a grey placeholder that sat there for most
     // of a second before the cover arrived. A moment after the song starts, so it never competes
     // with the song's own stream for the network, and only while the app is on screen.
-    LaunchedEffect(request, flight.enabled) {
-        if (!flight.enabled) return@LaunchedEffect
-        kotlinx.coroutines.delay(1_500)
+    // Before the player has ever been opened too: the first open of the session is the one most
+    // likely to find nothing in memory.
+    LaunchedEffect(request) {
+        kotlinx.coroutines.delay(700)
         com.ozyern.exhale.utils.awaitAppVisible()
         context.imageLoader.enqueue(request)
     }
@@ -361,10 +366,13 @@ fun CoverFlightOverlay(flight: CoverFlight, modifier: Modifier = Modifier) {
     ) {
         // Always composed: building it on the first frame of a close was one more thing in a frame that
         // already ran long. It is the image the prefetch above loads, so this decodes nothing extra.
-        if (flight.enabled) AsyncImage(
-            model = request,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
+        // The mini player's own thumbnail underneath, so there is always a picture in flight: a
+        // full-size cover not yet in memory left the flight empty — a plain sheet sliding up — and
+        // the cover popped in once the player had already arrived.
+        val thumb = com.ozyern.exhale.ui.component.rememberPinnedArtworkRequest(url)
+        // Built with the song, not with the player: created on the player's first open, the images
+        // were still loading for the whole of that first flight, and it flew nothing.
+        Box(
             modifier = Modifier
                 .layout { measurable, constraints ->
                     val frame = if (flight.inFlight()) {
@@ -438,7 +446,20 @@ fun CoverFlightOverlay(flight: CoverFlight, modifier: Modifier = Modifier) {
                         )
                     }
                 },
-        )
+        ) {
+            AsyncImage(
+                model = thumb,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            AsyncImage(
+                model = request,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }
 

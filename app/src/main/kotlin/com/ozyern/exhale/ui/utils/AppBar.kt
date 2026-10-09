@@ -62,7 +62,10 @@ class AppBarScrollBehavior(
                         state.contentOffset = 0f
                     }
                 }
-                state.heightOffset += consumed.y
+                // The bar follows the content itself, not the direction of the last scroll: a large
+                // title comes back only when the page is back at its top. Adding every upward scroll
+                // to it brought "Settings" back halfway down the list on the slightest pull.
+                state.heightOffset = state.contentOffset
                 return Offset.Zero
             }
         }

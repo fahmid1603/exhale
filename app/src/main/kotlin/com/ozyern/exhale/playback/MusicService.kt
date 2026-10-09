@@ -5983,7 +5983,7 @@ class MusicService :
     }
 
     /** Whether [mediaId] can play with no network at all: on the phone, saved, downloaded or fully cached. */
-    private fun isPlayableOffline(mediaId: String): Boolean =
+    fun isPlayableOffline(mediaId: String): Boolean =
         com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaId) ||
             com.ozyern.exhale.export.SavedFiles.has(this, mediaId) ||
             isDownloadedLocally(mediaId) ||

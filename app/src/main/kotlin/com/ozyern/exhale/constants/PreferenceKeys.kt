@@ -999,6 +999,9 @@ val AodTextScaleKey = floatPreferencesKey("aod_text_scale")
 val AodShowClockKey = booleanPreferencesKey("aod_show_clock")
 val AodShowLyricsKey = booleanPreferencesKey("aod_show_lyrics")
 
+/** Offline mode switched on by hand: Home and playback keep to what is on the phone. */
+val OfflineModeKey = booleanPreferencesKey("offline_mode")
+
 val AodClockFormatKey = booleanPreferencesKey("aod_clock_24h")
 
 val LyricsLineBlurKey = booleanPreferencesKey("lyricsLineBlur")
