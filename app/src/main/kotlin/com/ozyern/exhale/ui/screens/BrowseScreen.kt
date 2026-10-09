@@ -137,6 +137,7 @@ import com.ozyern.exhale.ui.component.LiquidBackButton
      }
  
      TopAppBar(
+         colors = com.ozyern.exhale.ui.component.transparentTopBarColors(),
          title = { com.ozyern.exhale.ui.component.HeadingStyle { Text(title ?: "") } },
          navigationIcon = {
              LiquidBackButton(

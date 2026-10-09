@@ -496,6 +496,17 @@ fun AODSettings(
                 }
             }
 
+            AodSettingsSection(title = "Lyrics") {
+                val (showLyrics, setShowLyrics) = rememberPreference(com.ozyern.exhale.constants.AodShowLyricsKey, true)
+                AodSwitchRow(
+                    icon = R.drawable.lyrics,
+                    title = "Show lyrics",
+                    description = "The line being sung, with the next one under it, when the song has timed lyrics",
+                    checked = showLyrics,
+                    onChanged = setShowLyrics,
+                )
+            }
+
             AodSettingsSection(title = stringResource(R.string.aod_system_clock_title)) {
                 AodSwitchRow(
                     icon = R.drawable.timer,

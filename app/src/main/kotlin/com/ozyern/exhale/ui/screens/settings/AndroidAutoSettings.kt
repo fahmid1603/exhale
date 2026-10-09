@@ -113,10 +113,9 @@ fun AndroidAutoSettings(
         containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            // Transparent at rest; the page's own ground rises behind it only as it collapses
+            // Transparent, with no ground behind it, as on every settings page
             // and rows slide beneath. See SettingsTopAppBar.
             Box {
-                SettingsBarGround(modifier = Modifier.matchParentSize().scrollEdgeFade(rememberSettingsEdge(scrollBehavior)))
 
                 LargeFlexibleTopAppBar(
                     title = { Text(stringResource(R.string.android_auto)) },

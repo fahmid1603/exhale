@@ -125,6 +125,16 @@ import com.ozyern.exhale.constants.LastUpdateCheckKey
 
 // ─── Update check state ───────────────────────────────────────────────────────
 
+private const val NO_INTERNET = "No Internet Connection"
+
+/** A network that can actually reach the internet, not merely one the phone is joined to. */
+private fun hasInternet(context: android.content.Context): Boolean {
+    val cm = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return true
+    val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+    return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+        caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+}
+
 private sealed interface UpdateCheckState {
     data object Idle : UpdateCheckState
     data object Loading : UpdateCheckState
@@ -216,6 +226,12 @@ private fun UpdateScreenContent(
     fun checkForUpdate() {
         if (updateCheckState == UpdateCheckState.Loading) return
         coroutineScope.launch {
+            // Offline, the release list comes from the cache and the answer would be "up to date",
+            // which is a guess dressed as a fact. Say what is actually wrong.
+            if (!hasInternet(context)) {
+                updateCheckState = UpdateCheckState.Error(NO_INTERNET)
+                return@launch
+            }
             updateCheckState = UpdateCheckState.Loading
             onLastCheckedAtChange(System.currentTimeMillis())
             // Always from the network: this screen is someone asking. See Updater.checkForUpdate.
@@ -230,7 +246,9 @@ private fun UpdateScreenContent(
                     }
                 }
                 .onFailure { err ->
-                    updateCheckState = UpdateCheckState.Error(err.message ?: "Check failed")
+                    updateCheckState = UpdateCheckState.Error(
+                        if (!hasInternet(context)) NO_INTERNET else err.message ?: "Check failed",
+                    )
                 }
         }
     }
@@ -269,7 +287,7 @@ private fun UpdateScreenContent(
         UpdateCheckState.Loading -> stringResource(R.string.update_status_checking)
         UpdateCheckState.UpToDate -> "Version up to date"
         is UpdateCheckState.UpdateAvailable -> "Exhale ${state.info.versionName} is available"
-        is UpdateCheckState.Error -> "Couldn't check for updates"
+        is UpdateCheckState.Error -> if (state.message == NO_INTERNET) NO_INTERNET else "Couldn't check for updates"
         UpdateCheckState.Idle -> if (updateAvailable) "Update available" else "Version up to date"
     }
     val canDownload = updateAvailable || pendingUpdateInfo?.let { Updater.hasUpdate(it.versionName, BuildConfig.VERSION_NAME) } == true
@@ -367,7 +385,11 @@ private fun UpdateScreenContent(
                     )
                     (updateCheckState as? UpdateCheckState.Error)?.let {
                         Spacer(Modifier.height(4.dp))
-                        Text(it.message, fontSize = 13.sp, color = Color.White.copy(alpha = 0.55f))
+                        Text(
+                            if (it.message == NO_INTERNET) "Connect to Wi-Fi or mobile data and try again." else it.message,
+                            fontSize = 13.sp,
+                            color = Color.White.copy(alpha = 0.55f),
+                        )
                     }
                     Spacer(Modifier.height(22.dp))
                     UpdatePill(
@@ -547,7 +569,7 @@ private fun UpdateHero(
                     stringResource(R.string.update_version_label, s.info.versionName)
 
                 is UpdateCheckState.Error ->
-                    stringResource(R.string.update_status_failed, s.message)
+                    if (s.message == NO_INTERNET) NO_INTERNET else stringResource(R.string.update_status_failed, s.message)
 
                 UpdateCheckState.Idle ->
                     if (updateAvailable) {

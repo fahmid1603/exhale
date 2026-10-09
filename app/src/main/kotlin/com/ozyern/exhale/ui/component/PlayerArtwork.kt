@@ -7,11 +7,17 @@
 package com.ozyern.exhale.ui.component
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import androidx.media3.common.C
+import coil3.imageLoader
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.ozyern.exhale.ui.utils.highRes
 
 /**
  * An [ImageRequest] for now-playing artwork that is pinned to the memory cache under a stable key.
@@ -40,13 +46,56 @@ import coil3.request.crossfade
 @Composable
 fun rememberPinnedArtworkRequest(url: String): ImageRequest {
     val context = LocalContext.current
-    return remember(context, url) {
-        ImageRequest.Builder(context)
-            .data(url)
-            .memoryCacheKey(url)
-            .placeholderMemoryCacheKey(url)
-            .memoryCachePolicy(CachePolicy.ENABLED)
-            .crossfade(false)
-            .build()
+    return remember(context, url) { pinnedArtworkRequest(context, url) }
+}
+
+private fun pinnedArtworkRequest(context: android.content.Context, url: String): ImageRequest =
+    ImageRequest.Builder(context)
+        .data(url)
+        .memoryCacheKey(url)
+        .placeholderMemoryCacheKey(url)
+        .memoryCachePolicy(CachePolicy.ENABLED)
+        .crossfade(false)
+        .build()
+
+/** The player's own cover request, shared by the player and the cover flight: one key, one bitmap. */
+fun playerArtworkRequest(context: android.content.Context, thumbnailUrl: String): ImageRequest =
+    ImageRequest.Builder(context)
+        .data(thumbnailUrl.highRes())
+        .size(1200, 1200)
+        .placeholderMemoryCacheKey(thumbnailUrl)
+        .build()
+
+/**
+ * The covers of the next songs in the queue, fetched while this one plays — the mini player's and
+ * the player's — so a skip, or a song ending, paints the new cover on its first frame instead of
+ * waiting on the network for it. Only while the app is on screen: in the background nothing would
+ * show them, and the disk cache still has them from the last time they were fetched.
+ */
+@Composable
+fun PrefetchUpcomingArtwork() {
+    val playerConnection = com.ozyern.exhale.LocalPlayerConnection.current ?: return
+    val context = LocalContext.current
+    val index by playerConnection.currentMediaItemIndex.collectAsState()
+    val windows by playerConnection.queueWindows.collectAsState()
+    LaunchedEffect(index, windows) {
+        // A breath after the song changes, so its own stream and cover go first.
+        kotlinx.coroutines.delay(800)
+        com.ozyern.exhale.utils.awaitAppVisible()
+        val player = playerConnection.player
+        val loader = context.imageLoader
+        var next = index
+        repeat(UPCOMING_ARTWORK) {
+            next = runCatching {
+                player.currentTimeline.getNextWindowIndex(next, player.repeatMode, player.shuffleModeEnabled)
+            }.getOrDefault(C.INDEX_UNSET)
+            if (next == C.INDEX_UNSET || next == index) return@LaunchedEffect
+            val url = runCatching { player.getMediaItemAt(next).mediaMetadata.artworkUri?.toString() }.getOrNull()
+                ?: return@repeat
+            loader.enqueue(pinnedArtworkRequest(context, url))
+            loader.enqueue(playerArtworkRequest(context, url))
+        }
     }
 }
+
+private const val UPCOMING_ARTWORK = 2

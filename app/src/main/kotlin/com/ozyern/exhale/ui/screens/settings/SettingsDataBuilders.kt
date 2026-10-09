@@ -454,7 +454,11 @@ private fun buildIndexItems(
                 subtitle = listOfNotNull(entry.page, section?.takeIf { it != entry.page }).joinToString(" › "),
                 accentColor = accent,
                 keywords = listOf(entry.page) + entry.keywords,
-                onClick = { resetSearch(); navController.navigate(entry.route) },
+                onClick = {
+                    resetSearch()
+                    SettingsJump.request(text(entry.title))
+                    navController.navigate(entry.route)
+                },
             )
         }
     }.mapIndexed { index, item -> item.copy(icon = painters[SettingsIndex[index].route] ?: fallback) }

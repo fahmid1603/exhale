@@ -348,37 +348,18 @@ fun DiscordSettings(
                 )
             }
 
-            DropdownMenu(
+            com.ozyern.exhale.ui.component.ExhaleMenu(
                 expanded = threeDotMenuExpanded,
-                onDismissRequest = { threeDotMenuExpanded = false }
-            ) {
-                DropdownMenuItem(
-                    text = { Text("Advanced") },
-                    onClick = {
-                        threeDotMenuExpanded = false
+                onDismiss = { threeDotMenuExpanded = false },
+                entries = listOf(
+                    com.ozyern.exhale.ui.component.MenuEntry("Advanced", icon = R.drawable.tune) {
                         navController.navigate("settings/discord/advanced")
                     },
-                    leadingIcon = {
-                        Icon(
-                            painter = painterResource(R.drawable.tune),
-                            contentDescription = null
-                        )
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.experiment_settings)) },
-                    onClick = {
-                        threeDotMenuExpanded = false
+                    com.ozyern.exhale.ui.component.MenuEntry(stringResource(R.string.experiment_settings), icon = R.drawable.experiment) {
                         navController.navigate("settings/discord/experimental")
                     },
-                    leadingIcon = {
-                        Icon(
-                            painter = painterResource(R.drawable.experiment),
-                            contentDescription = null
-                        )
-                    }
-                )
-            }
+                ),
+            )
         }
       )
     }

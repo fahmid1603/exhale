@@ -148,11 +148,14 @@ class CoverFlight {
     /** Scale the mini cover lands at, settling to 1 — the give at the end of a close. */
     internal val landing = Animatable(1f)
 
-    private fun mini(): MiniEnd? = minis.values.lastOrNull()
+    // Where the mini cover was last seen at rest, kept for the life of the process. Coming back to
+    // the app builds a new activity, and with the player open the mini cover is never measured at
+    // rest before the first close — which without this was a plain slide down, no cover.
+    private fun mini(): MiniEnd? = minis.values.lastOrNull() ?: lastMini
 
     /** True while the travelling cover stands in for both real ones. */
     fun inFlight(): Boolean {
-        if (!enabled || minis.isEmpty()) return false
+        if (!enabled || mini() == null) return false
         val p = progress()
         return p > REST && p < 1f - REST
     }
@@ -163,7 +166,7 @@ class CoverFlight {
             if (progress() <= REST) {
                 minis.values.removeAll { it.released }
                 minis.remove(owner)
-                minis[owner] = MiniEnd(coordinates.windowRect(), corner)
+                minis[owner] = MiniEnd(coordinates.windowRect(), corner).also { lastMini = it }
             }
         }
         .graphicsLayer {
@@ -283,6 +286,8 @@ class CoverFlight {
     private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
     private companion object {
+        var lastMini: MiniEnd? = null
+
         /** Progress within this of an end counts as at rest. */
         const val REST = 0.0005f
 
@@ -309,13 +314,7 @@ fun CoverFlightOverlay(flight: CoverFlight, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     // The player's own request — the same data and size — so the flight and the player share one
     // decoded bitmap, with the mini player's thumbnail standing in until that is in memory.
-    val request = remember(context, url) {
-        ImageRequest.Builder(context)
-            .data(url.highRes())
-            .size(1200, 1200)
-            .placeholderMemoryCacheKey(url)
-            .build()
-    }
+    val request = remember(context, url) { com.ozyern.exhale.ui.component.playerArtworkRequest(context, url) }
 
     // The landing: a close carries the cover's shrinking into the mini cover, which gives a
     // little under it and springs back — momentum, not a bounce added on top.

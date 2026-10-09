@@ -48,7 +48,18 @@ constructor(
     var summaryPage by mutableStateOf<SearchSummaryPage?>(null)
     val viewStateMap = mutableStateMapOf<String, ItemsPage?>()
 
+    /** Songs whose lyrics contain the query, for a search that reads like a line of a song. */
+    var lyricMatches by mutableStateOf<List<com.ozyern.exhale.utils.LyricSearch.Match>>(emptyList())
+
     init {
+        // The search bar hands the query over form-encoded, spaces as '+', and navigation decodes
+        // only the %-escapes: "say+you+cant+sleep" would be one word, never a line of a song.
+        val words = query.replace('+', ' ')
+        if (com.ozyern.exhale.utils.LyricSearch.looksLikeLyrics(words)) {
+            viewModelScope.launch {
+                lyricMatches = runCatching { com.ozyern.exhale.utils.LyricSearch.search(words) }.getOrDefault(emptyList())
+            }
+        }
         viewModelScope.launch {
             filter.collect { filter ->
                 // Defensive: the innertube calls are already Result-wrapped, but the

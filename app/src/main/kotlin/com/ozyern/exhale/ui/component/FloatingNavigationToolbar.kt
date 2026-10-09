@@ -349,80 +349,23 @@ private fun FloatingToolbarOverflowAction(
             )
         }
 
-        DropdownMenu(
+        ExhaleMenu(
             expanded = fabMenuExpanded,
-            onDismissRequest = { fabMenuExpanded = false },
-            shape = RoundedCornerShape(24.dp),
-            containerColor = if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainerHigh,
-            tonalElevation = 6.dp,
-        ) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.music_recognition)) },
-                onClick = {
-                    fabMenuExpanded = false
-                    onMusicRecognitionClick?.invoke()
+            onDismiss = { fabMenuExpanded = false },
+            entries = listOfNotNull(
+                MenuEntry(
+                    text = stringResource(R.string.music_recognition),
+                    icon = R.drawable.mic,
+                    enabled = onMusicRecognitionClick != null,
+                    onClick = { onMusicRecognitionClick?.invoke() },
+                ),
+                if (onShuffleClick != null && shuffleIconRes != null) {
+                    MenuEntry(text = stringResource(R.string.shuffle), icon = shuffleIconRes, onClick = onShuffleClick)
+                } else {
+                    null
                 },
-                leadingIcon = {
-                    Surface(
-                        modifier = Modifier.size(40.dp),
-                        shape = CircleShape,
-                        color = floatingToolbarMenuIconContainerColor(pureBlack = pureBlack),
-                        contentColor = floatingToolbarMenuIconContentColor(pureBlack = pureBlack),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                painter = painterResource(R.drawable.mic),
-                                contentDescription =
-                                    musicRecognitionContentDescription.ifEmpty {
-                                        stringResource(R.string.music_recognition)
-                                    },
-                            )
-                        }
-                    }
-                },
-                enabled = onMusicRecognitionClick != null,
-                colors =
-                    MenuDefaults.itemColors(
-                        textColor = if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurface,
-                        leadingIconColor = if (pureBlack) Color.White.copy(alpha = 0.82f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                        disabledTextColor = if (pureBlack) Color.White.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                        disabledLeadingIconColor = if (pureBlack) Color.White.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
-                    ),
-            )
-
-            if (onShuffleClick != null && shuffleIconRes != null) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.shuffle)) },
-                    onClick = {
-                        fabMenuExpanded = false
-                        onShuffleClick()
-                    },
-                    leadingIcon = {
-                        Surface(
-                            modifier = Modifier.size(40.dp),
-                            shape = CircleShape,
-                            color = floatingToolbarMenuIconContainerColor(pureBlack = pureBlack),
-                            contentColor = floatingToolbarMenuIconContentColor(pureBlack = pureBlack),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    painter = painterResource(shuffleIconRes),
-                                    contentDescription =
-                                        shuffleContentDescription.ifEmpty {
-                                            stringResource(R.string.shuffle)
-                                        },
-                                )
-                            }
-                        }
-                    },
-                    colors =
-                        MenuDefaults.itemColors(
-                            textColor = if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurface,
-                            leadingIconColor = if (pureBlack) Color.White.copy(alpha = 0.82f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                        ),
-                )
-            }
-        }
+            ),
+        )
     }
 }
 

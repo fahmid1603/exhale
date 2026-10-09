@@ -20,15 +20,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 /**
- * The ground a transparent top bar gets once something scrolls beneath it, and only then.
+ * The ground a transparent top bar used to get once something scrolled beneath it.
  *
- * At rest the bar has no colour of its own: the page runs straight up behind the title and the
- * status bar. When content slides under, the page's colour rises behind the bar — nearly solid
- * where the title sits, fading to nothing a little below the bar's edge — so the title stays
- * readable without a band across the top of the screen. [visibility] is read while drawing, so
- * following the scroll costs no recomposition.
+ * Off: however it was faded, the page's colour rising behind the bar read as a dark band across
+ * the top of the screen, on the tabs and on every page with a list. Bars sit straight on the page
+ * now; the pages' callers are left as they are so the ground can come back in one place.
  */
-fun Modifier.scrollEdgeScrim(color: Color, visibility: () -> Float): Modifier = drawBehind {
+fun Modifier.scrollEdgeScrim(color: Color, visibility: () -> Float): Modifier =
+    if (!ScrollEdgeGround) this else drawBehind {
     val shown = visibility().coerceIn(0f, 1f)
     if (shown <= 0.001f || color.alpha == 0f) return@drawBehind
     val tail = ScrollEdgeTail.toPx()
@@ -44,6 +43,8 @@ fun Modifier.scrollEdgeScrim(color: Color, visibility: () -> Float): Modifier = 
         size = Size(size.width, total),
     )
 }
+
+private const val ScrollEdgeGround = false
 
 /** How far below a bar its scroll edge fades out. */
 val ScrollEdgeTail = 28.dp

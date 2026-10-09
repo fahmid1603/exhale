@@ -535,12 +535,11 @@ fun ArtistScreen(
                         val subscribers = artistPage?.artist?.subscriberCountText?.takeIf { !showLocal && it.isNotBlank() }
                         val listeners = artistPage?.artist?.monthlyListenerCountText?.takeIf { !showLocal && it.isNotBlank() }
                         if (subscribers != null || listeners != null) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                            ArtistStatsRow(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 14.dp),
                             ) {
-                                subscribers?.let { ArtistStatChip(R.drawable.person, "${it.substringBefore(' ')} subscribers", palette) }
-                                listeners?.let { ArtistStatChip(R.drawable.graphic_eq, "${it.substringBefore(' ')} monthly listeners", palette) }
+                                subscribers?.let { ArtistStatChip(R.drawable.group, it.substringBefore(' '), "subscribers", Color(0xFFFF375F), palette) }
+                                listeners?.let { ArtistStatChip(R.drawable.headphones, it.substringBefore(' '), "monthly listeners", Color(0xFF0A84FF), palette) }
                             }
                         } else if (countsLine != null) {
                             Text(
@@ -1056,24 +1055,64 @@ private fun ArtistActionButton(
 
 /** A small glass chip under the artist's name: one of YouTube's reach figures, with its glyph. */
 @Composable
-private fun ArtistStatChip(iconRes: Int, text: String, palette: com.ozyern.exhale.ui.component.ArtworkPalette) {
+private fun ArtistStatsRow(modifier: Modifier, content: @Composable () -> Unit) {
+    // Side by side when they fit, the second under the first on a narrow phone.
+    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+    androidx.compose.foundation.layout.FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier,
+    ) { content() }
+}
+
+@Composable
+private fun ArtistStatChip(
+    iconRes: Int,
+    count: String,
+    label: String,
+    tint: Color,
+    palette: com.ozyern.exhale.ui.component.ArtworkPalette,
+) {
+    // A glass capsule with the figure first: a small disc in the stat's own colour holding its
+    // glyph — people for subscribers, headphones for listeners — then the number, bold, and what
+    // it counts, quieter. One reads at a glance as reach, the other as listening.
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .clip(CircleShape)
-            .background(palette.elevated.copy(alpha = 0.6f))
-            .border(0.5.dp, Color.White.copy(alpha = 0.12f), CircleShape)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .background(palette.elevated.copy(alpha = 0.55f))
+            .border(0.5.dp, Color.White.copy(alpha = 0.14f), CircleShape)
+            .padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
     ) {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = null,
-            tint = palette.onBackgroundVariant,
-            modifier = Modifier.size(14.dp),
-        )
-        Spacer(Modifier.width(6.dp))
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(24.dp)
+                .clip(CircleShape)
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        listOf(tint, tint.copy(red = tint.red * 0.78f, green = tint.green * 0.78f, blue = tint.blue * 0.78f)),
+                    ),
+                ),
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
         Text(
-            text = text,
+            text = count,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = palette.onBackground,
+            maxLines = 1,
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = label,
             style = MaterialTheme.typography.labelMedium,
             color = palette.onBackgroundVariant,
             maxLines = 1,

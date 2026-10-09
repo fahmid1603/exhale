@@ -935,11 +935,8 @@ fun SettingsTopAppBar(
     scrollBehavior: TopAppBarScrollBehavior? = null,
 ) {
     Box(modifier) {
-        // Always up. The ground is the page's own colour and wash, so at rest it is invisible; it
-        // only shows as rows slide beneath the title and fade out under it. Waiting for a scroll
-        // signal to raise it is what let rows and large titles draw over each other on pages
-        // whose scroll never reached the bar.
-        SettingsBarGround(modifier = Modifier.matchParentSize().scrollEdgeFade { 1f })
+        // No ground behind the bar: the page runs up under the back button and the title the way
+        // the tabs do. A ground here was a dark band across the top of every settings page.
 
         TopAppBar(
             title = { ScrollingHeading(large = false, scrollBehavior = scrollBehavior, title = title) },
@@ -977,11 +974,8 @@ fun SettingsLargeTopAppBar(
     scrollBehavior: TopAppBarScrollBehavior? = null,
 ) {
     Box(modifier) {
-        // Always up. The ground is the page's own colour and wash, so at rest it is invisible; it
-        // only shows as rows slide beneath the title and fade out under it. Waiting for a scroll
-        // signal to raise it is what let rows and large titles draw over each other on pages
-        // whose scroll never reached the bar.
-        SettingsBarGround(modifier = Modifier.matchParentSize().scrollEdgeFade { 1f })
+        // No ground behind the bar: the page runs up under the back button and the title the way
+        // the tabs do. A ground here was a dark band across the top of every settings page.
 
         LargeTopAppBar(
             title = { ScrollingHeading(large = true, scrollBehavior = scrollBehavior, title = title) },

@@ -49,6 +49,20 @@ object MusicVideo {
     /** Whether we already know there is no video, so the switch can be hidden without a request. */
     fun knownMissing(songId: String): Boolean = videoIds[songId] == ""
 
+    /** Whether we already know there is one. */
+    fun knownPresent(songId: String): Boolean = !videoIds[songId].isNullOrEmpty()
+
+    /**
+     * Whether the song has a video, found out without fetching the video's stream: one search, its
+     * answer kept, so the Video switch is offered only for songs that have something to switch to.
+     */
+    suspend fun has(song: MediaMetadata): Boolean = withContext(Dispatchers.IO) {
+        videoIds[song.id]?.let { return@withContext it.isNotEmpty() }
+        val found = runCatching { search(song) }.getOrElse { return@withContext false }
+        videoIds[song.id] = found.orEmpty()
+        found != null
+    }
+
     suspend fun find(song: MediaMetadata): Found? = withContext(Dispatchers.IO) {
         val videoId = videoIds[song.id]?.takeIf { it.isNotEmpty() }
             ?: if (videoIds[song.id] == "") return@withContext null else search(song)

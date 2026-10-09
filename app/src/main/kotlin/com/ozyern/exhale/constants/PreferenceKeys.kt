@@ -997,6 +997,7 @@ val AodTextScaleKey = floatPreferencesKey("aod_text_scale")
 
 /** Mostrar reloj del sistema en el AOD */
 val AodShowClockKey = booleanPreferencesKey("aod_show_clock")
+val AodShowLyricsKey = booleanPreferencesKey("aod_show_lyrics")
 
 val AodClockFormatKey = booleanPreferencesKey("aod_clock_24h")
 

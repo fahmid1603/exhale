@@ -48,6 +48,7 @@ fun DownloadQueueScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = com.ozyern.exhale.ui.component.transparentTopBarColors(),
                 title = { com.ozyern.exhale.ui.component.HeadingStyle { Text(stringResource(R.string.download_queue)) } },
                 navigationIcon = {
                     LiquidBackButton(

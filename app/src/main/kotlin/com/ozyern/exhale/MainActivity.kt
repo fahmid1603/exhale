@@ -2773,6 +2773,7 @@ class MainActivity : ComponentActivity() {
                             flight = coverFlight,
                             modifier = Modifier.fillMaxSize(),
                         )
+                        com.ozyern.exhale.ui.component.PrefetchUpcomingArtwork()
 
                         BottomSheetMenu(
                             state = LocalMenuState.current,
@@ -2833,11 +2834,15 @@ class MainActivity : ComponentActivity() {
 
                     // Premium boot animation: a solid brand-color layer with the centered
                     // Exhale logo scale-in, drawn ABOVE every other layer, then crossfading
-                    // into the (already composed) Home screen beneath. rememberSaveable keeps
-                    // it a cold-start-only moment — rotations/recreations never replay it.
-                    var bootSplashDone by rememberSaveable { mutableStateOf(false) }
+                    // into the (already composed) Home screen beneath. It belongs to the process,
+                    // not the activity: swiping out of the app ends the activity while the music
+                    // keeps the process running, and coming back to it is not a cold start.
+                    // A setting picked from settings search, lit up where it sits on its page.
+                    com.ozyern.exhale.ui.screens.settings.SettingsJumpSpotlight()
+
+                    var bootSplashDone by remember { mutableStateOf(bootSplashShown) }
                     if (!bootSplashDone) {
-                        BootSplash(onFinished = { bootSplashDone = true })
+                        BootSplash(onFinished = { bootSplashShown = true; bootSplashDone = true })
                     }
 
                     // The first run after an update, and only that.
@@ -3045,7 +3050,10 @@ val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils p
  * one has already gone. A change of subject, not a journey — so no horizontal travel, and no zoom
  * of the whole page, which on a screen of album art read as the page being shoved at you.
  */
-private val TabEnter = fadeIn(tween(200, delayMillis = 40, easing = androidx.compose.animation.core.LinearOutSlowInEasing)) +
+/** Whether this process has already played the boot splash. */
+private var bootSplashShown = false
+
+private val TabEnter =fadeIn(tween(200, delayMillis = 40, easing = androidx.compose.animation.core.LinearOutSlowInEasing)) +
     // A sixtieth of the page's height: about 13dp on a phone.
     slideInVertically(spring(dampingRatio = 0.86f, stiffness = 520f)) { it / 60 }
 private val TabExit = fadeOut(tween(90, easing = androidx.compose.animation.core.FastOutLinearInEasing))

@@ -524,14 +524,11 @@ internal fun NowPlayingScreen(
     // ---- Artwork ----
     val artUrl = mediaMetadata.thumbnailUrl?.highRes()
     // One request object for the banner and the sleeve: one decode, one bitmap for both.
+    // The mini player's thumbnail stands in while the full size arrives: a soft cover, never the
+    // grey placeholder. The same request the queue prefetches for upcoming songs, so it is a hit.
     val artRequest = remember(artUrl) {
-        ImageRequest.Builder(context)
-            .data(artUrl)
-            .size(1200, 1200)
-            // The mini player's thumbnail stands in while the full size arrives: a soft cover,
-            // never the grey placeholder.
-            .placeholderMemoryCacheKey(mediaMetadata.thumbnailUrl)
-            .build()
+        mediaMetadata.thumbnailUrl?.let { com.ozyern.exhale.ui.component.playerArtworkRequest(context, it) }
+            ?: ImageRequest.Builder(context).data(artUrl).size(1200, 1200).build()
     }
     var artLoaded by remember(artUrl) { mutableStateOf(false) }
     // Success from the banner's own painter: two painters sharing a request still don't enter
@@ -723,6 +720,18 @@ internal fun NowPlayingScreen(
     var videoShown by remember(mediaMetadata.id) { mutableStateOf(false) }
     LaunchedEffect(videoMode) { if (!videoMode) videoShown = false }
     var videoMissing by remember(mediaMetadata.id) { mutableStateOf(com.ozyern.exhale.playback.MusicVideo.knownMissing(mediaMetadata.id)) }
+    // Offered only once a video is known to exist: a switch on every song, most of which turned out
+    // to have none, was a promise the player kept breaking.
+    var videoFound by remember(mediaMetadata.id) { mutableStateOf(com.ozyern.exhale.playback.MusicVideo.knownPresent(mediaMetadata.id)) }
+    LaunchedEffect(mediaMetadata.id) {
+        if (videoFound || videoMissing) return@LaunchedEffect
+        // After the song has its stream: this is one search, and it can wait a moment.
+        kotlinx.coroutines.delay(1_200)
+        val has = com.ozyern.exhale.playback.MusicVideo.has(mediaMetadata)
+        videoFound = has
+        videoMissing = !has
+    }
+    var videoFullscreen by remember { mutableStateOf(false) }
     // One fresh try when a stream dies mid-play, as the Windows app re-asks for its URL: a stale link
     // is the usual reason, and a new one usually plays.
     var videoRetry by remember(mediaMetadata.id) { mutableIntStateOf(0) }
@@ -817,15 +826,18 @@ internal fun NowPlayingScreen(
                         val toGlass = morphToGlass && glassThumbHome != null && sheetClose() < 0.01f
                         val thumb = (if (toGlass) GLASS_THUMB_SIZE else THUMB_SIZE).toPx()
                         val home = if (toGlass) glassThumbHome!! else sleeveHome
+                        // The banner starts under the strip at the top — the handle and "Playing
+                        // from" sit on the player, not on the picture — and ends where it did.
+                        val topPx = (statusBarTop + TOP_STRIP_HEIGHT).toPx()
                         val fullW = constraints.maxWidth.toFloat()
-                        val fullH = heroHeight.toPx()
+                        val fullH = (heroHeight.toPx() - topPx).coerceAtLeast(1f)
                         val w = (fullW + (thumb - fullW) * e).roundToInt().coerceAtLeast(1)
                         val h = (fullH + (thumb - fullH) * e).roundToInt().coerceAtLeast(1)
                         val placeable = measurable.measure(Constraints.fixed(w, h))
                         layout(constraints.maxWidth, h) {
                             placeable.placeRelative(
                                 (home.x * e).roundToInt(),
-                                (home.y * e).roundToInt(),
+                                (topPx + (home.y - topPx) * e).roundToInt(),
                             )
                         }
                     }
@@ -855,7 +867,10 @@ internal fun NowPlayingScreen(
                             shape = RoundedCornerShape((28f * depth).dp)
                             clip = true
                         } else if (landing <= 0.001f) {
-                            clip = false
+                            // The breath of zoom stays inside the frame instead of spilling up
+                            // over the strip.
+                            shape = androidx.compose.ui.graphics.RectangleShape
+                            clip = true
                         }
                     }
                     .drawWithContent {
@@ -895,17 +910,23 @@ internal fun NowPlayingScreen(
                 onRenderedChanged = { canvasRendered = it },
                 modifier = Modifier
                     .align(Alignment.TopStart)
+                    .offset(y = statusBarTop + TOP_STRIP_HEIGHT)
                     .fillMaxWidth()
-                    .height(heroHeight),
+                    .height((heroHeight - statusBarTop - TOP_STRIP_HEIGHT).coerceAtLeast(1.dp)),
             )
         }
         if (heroClip == null && canvasRendered) {
             SideEffect { canvasRendered = false }
         }
 
-        // The video sits where the cover is, on black, and dissolves at its foot the same way.
+        // The video sits where the cover is, on black: the picture itself solid, right under the
+        // strip at the top, and only the black beneath it dissolving into the player at the foot.
+        // The cover's own dissolve used to run across the bottom of the picture, which left the
+        // video see-through with the player's background showing in it.
         val video = musicVideo
-        if (videoMode && video != null && heroHeight > 0.dp && !collapsePastHalf) {
+        val videoTopPx = with(density) { (statusBarTop + TOP_STRIP_HEIGHT).toPx() }
+        val videoAspect = video?.stream?.let { if (it.width > 0 && it.height > 0) it.width.toFloat() / it.height else null } ?: (16f / 9f)
+        if (videoMode && video != null && heroHeight > 0.dp && !collapsePastHalf && !videoFullscreen) {
             Box(
                 Modifier
                     .align(Alignment.TopStart)
@@ -917,16 +938,20 @@ internal fun NowPlayingScreen(
                     }
                     .drawWithContent {
                         // Black only once the picture is there; until then the cover shows through.
-                        if (videoShown) drawRect(Color.Black)
+                        if (videoShown) drawRect(Color.Black, topLeft = Offset(0f, videoTopPx))
                         drawContent()
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(Color.Black, Color.Transparent),
-                                startY = size.height * (1f - HERO_FADE_FRACTION),
-                                endY = size.height,
-                            ),
-                            blendMode = BlendMode.DstIn,
-                        )
+                        val pictureBottom = videoTopPx + size.width / videoAspect
+                        val start = maxOf(pictureBottom, size.height * (1f - HERO_FADE_FRACTION))
+                        if (start < size.height) {
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(Color.Black, Color.Transparent),
+                                    startY = start,
+                                    endY = size.height,
+                                ),
+                                blendMode = BlendMode.DstIn,
+                            )
+                        }
                     },
             ) {
                 MusicVideoSurface(
@@ -946,11 +971,41 @@ internal fun NowPlayingScreen(
                         videoMode = false
                         android.widget.Toast.makeText(context, "Couldn't play this video", android.widget.Toast.LENGTH_SHORT).show()
                     },
+                    alignment = Alignment.TopCenter,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(top = statusBarTop + TOP_STRIP_HEIGHT),
                 )
+                // Full screen: the one place the video is a player, with its controls.
+                if (videoShown) {
+                    val pictureHeight = statusBarTop + TOP_STRIP_HEIGHT +
+                        androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp / videoAspect
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset { IntOffset(0, (pictureHeight - 44.dp).roundToPx()) }
+                            .padding(end = 10.dp)
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.45f))
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                videoFullscreen = true
+                            },
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.fullscreen),
+                            contentDescription = "Full screen",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
             }
+        }
+        if (videoFullscreen && video != null) {
+            FullscreenMusicVideo(stream = video.stream, onExit = { videoFullscreen = false })
         }
 
         // Keeps the status bar legible over a bright cover without boxing it in.
@@ -1027,7 +1082,7 @@ internal fun NowPlayingScreen(
                 }
                 // Song ⇄ Video, as Apple Music offers it: only while the cover is the screen, and
                 // gone for a song we already know has no video.
-                if (!videoMissing && !collapsePastSettling) {
+                if (videoFound && !videoMissing && !collapsePastSettling) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier

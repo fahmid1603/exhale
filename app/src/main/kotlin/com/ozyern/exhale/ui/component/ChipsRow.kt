@@ -263,25 +263,20 @@ fun <Int> ChoiceChipsRow(
                 enter = expandIn() + fadeIn(),
                 exit = shrinkOut() + fadeOut(),
             ) {
-                DropdownMenu(
-                    modifier = Modifier.padding(start = 12.dp),
+                ExhaleMenu(
                     expanded = expanded,
-                    onDismissRequest = {
+                    onDismiss = {
+                        if (expanded) expandIconDegree -= 180
                         expanded = false
-                        expandIconDegree -= 180
                     },
-                ) {
-                    options.forEach { option ->
-                        DropdownMenuItem(
-                            text = { Text(text = option.second) },
-                            onClick = {
-                                onSelectionChange(option.first)
-                                expandIconDegree -= 180
-                                expanded = false
-                            },
+                    entries = options.map { option ->
+                        MenuEntry(
+                            text = option.second,
+                            checked = option.first == selectedOption,
+                            onClick = { onSelectionChange(option.first) },
                         )
-                    }
-                }
+                    },
+                )
             }
         }
 

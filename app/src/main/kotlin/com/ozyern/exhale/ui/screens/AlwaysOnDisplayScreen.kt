@@ -245,6 +245,7 @@ fun AlwaysOnDisplayScreen(navController: NavController) {
     val (textScale) = rememberPreference(AodTextScaleKey, 1.0f)
     val (showClock) = rememberPreference(AodShowClockKey, false)
     val (clockFormat24h) = rememberPreference(AodClockFormatKey, true)
+    val (showLyrics) = rememberPreference(com.ozyern.exhale.constants.AodShowLyricsKey, true)
 
     val aodStyle =
         remember(rawStyle) { runCatching { AodStyle.valueOf(rawStyle) }.getOrDefault(AodStyle.CLASSIC) }
@@ -279,6 +280,20 @@ fun AlwaysOnDisplayScreen(navController: NavController) {
             }
         }
     }
+
+    // ── Lyrics: the line being sung and the one after it ─────────────────
+    val lyricsEntity by playerConnection.currentLyrics.collectAsState(initial = null)
+    val lyricLines = remember(lyricsEntity?.lyrics, showLyrics) {
+        val text = lyricsEntity?.lyrics?.takeIf { showLyrics && it.isNotBlank() && it != com.ozyern.exhale.db.entities.LyricsEntity.LYRICS_NOT_FOUND }
+        text?.let { runCatching { com.ozyern.exhale.lyrics.LyricsUtils.parseLyrics(it) }.getOrNull() }
+            ?.filter { it.text.isNotBlank() }
+            // Timed lyrics only: plain text has no "now" to show.
+            ?.takeIf { lines -> lines.size > 1 && lines.any { it.time > 0L } }
+            .orEmpty()
+    }
+    val lyricIndex = lyricLines.indexOfLast { it.time <= position + 150L }
+    val lyricNow = lyricLines.getOrNull(lyricIndex)?.text
+    val lyricNext = lyricLines.getOrNull(lyricIndex + 1)?.text
 
     val displayPosition = sliderPosition ?: position
     val progressFraction = remember(displayPosition, duration) {
@@ -355,6 +370,9 @@ fun AlwaysOnDisplayScreen(navController: NavController) {
         showControls = showControls,
         showClock = showClock,
         clockText = clockText,
+        hasLyrics = lyricLines.isNotEmpty(),
+        lyricNow = lyricNow,
+        lyricNext = lyricNext,
         textScale = textScale,
         controlStyle = controlStyle,
         transitionDuration = transitionDuration,
@@ -422,6 +440,9 @@ private data class AodCommonParams(
     val showControls: Boolean,
     val showClock: Boolean,
     val clockText: String,
+    val hasLyrics: Boolean,
+    val lyricNow: String?,
+    val lyricNext: String?,
     val textScale: Float,
     val controlStyle: AodControlStyle,
     val transitionDuration: Int,
@@ -1207,6 +1228,11 @@ private fun AodMetaAndControls(
         }
     }
 
+    if (params.hasLyrics) {
+        Spacer(Modifier.height(if (isLandscape) 14.dp else 20.dp))
+        AodLyrics(now = params.lyricNow, next = params.lyricNext, textScale = params.textScale, isLandscape = isLandscape)
+    }
+
     if ((params.showTitle || params.showArtist) && (params.showProgress || params.showControls))
         Spacer(Modifier.height(if (isLandscape) 20.dp else 30.dp))
 
@@ -1248,6 +1274,53 @@ private fun AodMetaAndControls(
             accentColor = params.dominantColor,
             isLandscape = isLandscape,
         )
+    }
+}
+
+/**
+ * The words on the always-on display: the line being sung, large and white, and the next one
+ * under it, quieter — readable at a glance from across a desk. Each change slides the new line up
+ * into place as the old one leaves, the way the lyrics page moves, without its scrolling list.
+ */
+@Composable
+private fun AodLyrics(now: String?, next: String?, textScale: Float, isLandscape: Boolean) {
+    androidx.compose.animation.AnimatedContent(
+        targetState = now to next,
+        transitionSpec = {
+            (fadeIn(tween(420)) + androidx.compose.animation.slideInVertically(tween(420)) { it / 3 }) togetherWith
+                (fadeOut(tween(260)) + androidx.compose.animation.slideOutVertically(tween(320)) { -it / 3 })
+        },
+        label = "aodLyrics",
+        modifier = Modifier.fillMaxWidth(),
+    ) { (line, upcoming) ->
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                // Before the first line: a breath, not an empty gap.
+                text = line ?: "• • •",
+                color = Color.White.copy(alpha = if (line == null) 0.45f else 0.95f),
+                fontSize = ((if (isLandscape) 24f else 22f) * textScale).sp,
+                lineHeight = ((if (isLandscape) 30f else 28f) * textScale).sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (!upcoming.isNullOrBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = upcoming,
+                    color = Color.White.copy(alpha = 0.38f),
+                    fontSize = ((if (isLandscape) 17f else 16f) * textScale).sp,
+                    lineHeight = ((if (isLandscape) 22f else 21f) * textScale).sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
     }
 }
 

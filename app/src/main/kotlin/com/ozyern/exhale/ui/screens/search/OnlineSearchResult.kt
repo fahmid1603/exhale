@@ -260,6 +260,29 @@ fun OnlineSearchResult(
             ),
         ) {
             if (searchFilter == null) {
+                // A line of a song typed into search: the songs it comes from, above everything
+                // else — leaving out any YouTube already put first, so nothing shows twice.
+                val alreadyFirst = allModeSections.firstOrNull()?.second?.take(2)?.map { it.id }.orEmpty()
+                val fromLyrics = viewModel.lyricMatches.filter { it.song.id !in alreadyFirst }
+                if (fromLyrics.isNotEmpty()) {
+                    item(key = "lyrics_header") {
+                        SearchSectionHeader(title = "From the lyrics", onSeeAll = null, modifier = Modifier.animateItem())
+                    }
+                    itemsIndexed(fromLyrics, key = { _, match -> "lyrics/${match.song.id}" }) { i, match ->
+                        ytItemContent(match.song)
+                        match.line?.let { line ->
+                            Text(
+                                text = "“$line”",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(start = 84.dp, end = 20.dp, bottom = 8.dp),
+                            )
+                        }
+                        if (i < fromLyrics.lastIndex) SearchRowDivider()
+                    }
+                }
                 allModeSections.forEachIndexed { index, (title, sectionItems, sectionFilter) ->
                     val hero = if (index == 0 && sectionFilter == null) sectionItems.firstOrNull() else null
                     if (hero != null) {

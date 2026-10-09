@@ -67,42 +67,17 @@ inline fun <reified T : Enum<T>> SortHeader(
                 .padding(horizontal = 4.dp, vertical = 8.dp),
         )
 
-        DropdownMenu(
+        ExhaleMenu(
             expanded = menuExpanded,
-            onDismissRequest = { menuExpanded = false },
-            modifier = Modifier.widthIn(min = 172.dp),
-        ) {
-            enumValues<T>().forEach { type ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = stringResource(sortTypeText(type)),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Normal,
-                        )
-                    },
-                    trailingIcon = {
-                        Icon(
-                            painter =
-                            painterResource(
-                                if (sortType ==
-                                    type
-                                ) {
-                                    R.drawable.radio_button_checked
-                                } else {
-                                    R.drawable.radio_button_unchecked
-                                },
-                            ),
-                            contentDescription = null,
-                        )
-                    },
-                    onClick = {
-                        onSortTypeChange(type)
-                        menuExpanded = false
-                    },
+            onDismiss = { menuExpanded = false },
+            entries = enumValues<T>().map { type ->
+                MenuEntry(
+                    text = stringResource(sortTypeText(type)),
+                    checked = sortType == type,
+                    onClick = { onSortTypeChange(type) },
                 )
-            }
-        }
+            },
+        )
 
         if (showDescending == true) {
             val allowDescending =
