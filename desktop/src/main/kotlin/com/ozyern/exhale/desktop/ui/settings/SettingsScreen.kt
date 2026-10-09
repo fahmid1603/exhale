@@ -410,6 +410,17 @@ private fun categories(
                     SliderItem("Playback speed", null, s.playbackSpeed, 0.5f..2f, 29, { String.format("%.2f×", it) }) { v ->
                         update { it.copy(playbackSpeed = (v * 20).roundToInt() / 20f) }
                     }.withIcon(NavIcons.Speed, "playback_speed"),
+                    ChoiceItem(
+                        "Sound preset", "Plays the song like a record at another speed, pitch and all. Normal leaves the speed above in charge.",
+                        com.ozyern.exhale.desktop.player.AudioEffects.SoundPresets.map { it.first to it.second },
+                        s.soundPreset,
+                    ) { v -> update { it.copy(soundPreset = v) } }.withIcon(TransportIcons.Equalizer, "sound_preset"),
+                    SwitchItem("8D audio", "The song circles your head, passing behind it. Best on headphones.", s.eightD) { v ->
+                        update { it.copy(eightD = v) }
+                    }.withIcon(NavIcons.Surround, "eight_d"),
+                    SliderItem("8D speed", null, s.eightDRate, 0.05f..0.4f, 6, { "one lap every ${(1f / it).roundToInt()} s" }) { v ->
+                        update { it.copy(eightDRate = v) }
+                    }.withIcon(NavIcons.Timer, "eight_d_rate"),
                 ),
             ),
             Group(

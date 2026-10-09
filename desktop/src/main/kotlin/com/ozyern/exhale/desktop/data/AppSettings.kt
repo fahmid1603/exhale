@@ -142,6 +142,12 @@ data class Settings(
     val equalizerPreset: String = "Flat",
     val equalizerBands: List<Int> = List(10) { 0 },
     val playbackSpeed: Float = 1f,
+    /** A record-at-another-speed sound — NORMAL, SPED_UP, NIGHTCORE, SLOWED, DAYCORE, VAPORWAVE — pitch following speed. */
+    val soundPreset: String = "NORMAL",
+    /** 8D: the song circles the listener's head. */
+    val eightD: Boolean = false,
+    /** Laps a second for 8D; 0.125 is one every eight seconds. */
+    val eightDRate: Float = 0.125f,
     val persistentQueue: Boolean = true,
     val autoSkipOnError: Boolean = true,
     val rememberVolume: Boolean = true,
@@ -218,6 +224,9 @@ private fun Settings.toProps(): Map<String, String?> = mapOf(
     "equalizer_preset" to equalizerPreset,
     "equalizer_bands" to equalizerBands.joinToString(","),
     "playback_speed" to playbackSpeed.toString(),
+    "sound_preset" to soundPreset,
+    "eight_d" to eightD.toString(),
+    "eight_d_rate" to eightDRate.toString(),
     "persistent_queue" to persistentQueue.toString(),
     "auto_skip_on_error" to autoSkipOnError.toString(),
     "remember_volume" to rememberVolume.toString(),
@@ -318,6 +327,9 @@ private fun settingsFrom(get: (String) -> String?): Settings {
         equalizerPreset = s("equalizer_preset", d.equalizerPreset),
         equalizerBands = csv("equalizer_bands")?.mapNotNull { it.toIntOrNull() }?.takeIf { it.size == 10 } ?: d.equalizerBands,
         playbackSpeed = f("playback_speed", d.playbackSpeed).coerceIn(0.5f, 2f),
+        soundPreset = s("sound_preset", d.soundPreset),
+        eightD = b("eight_d", d.eightD),
+        eightDRate = f("eight_d_rate", d.eightDRate).coerceIn(0.05f, 0.4f),
         persistentQueue = b("persistent_queue", d.persistentQueue),
         autoSkipOnError = b("auto_skip_on_error", d.autoSkipOnError),
         rememberVolume = b("remember_volume", d.rememberVolume),

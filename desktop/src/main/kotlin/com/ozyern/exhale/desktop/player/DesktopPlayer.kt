@@ -100,6 +100,7 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
 
     private var appliedFilters: String? = null
     private var appliedSpeed: Float? = null
+    private var appliedPitchCorrection: Boolean? = null
     private var appliedProxy: String? = null
     private var appliedGain: Double? = null
     private var appliedChannels: String? = null
@@ -212,7 +213,12 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         val chain = AudioEffects.filterChain(settings)
         if (chain != appliedFilters) {
             // A libmpv without the upmix filter refuses the whole chain; keep the rest of it.
-            if (!mpv.setProperty("af", chain)) mpv.setProperty("af", AudioEffects.filterChain(settings.copy(spatialAudio = "OFF")))
+            if (!mpv.setProperty("af", chain) &&
+                !mpv.setProperty("af", AudioEffects.filterChain(settings.copy(spatialAudio = "OFF")))
+            ) {
+                // And one without 8D's graph either, so the equalizer at least survives.
+                mpv.setProperty("af", AudioEffects.filterChain(settings.copy(spatialAudio = "OFF", eightD = false)))
+            }
             appliedFilters = chain
         }
         val channels = AudioEffects.outputChannels(settings)
@@ -230,9 +236,15 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                 probeOutput()
             }
         }
-        if (settings.playbackSpeed != appliedSpeed) {
-            mpv.setProperty("speed", String.format(Locale.US, "%.2f", settings.playbackSpeed))
-            appliedSpeed = settings.playbackSpeed
+        // A Sound preset plays the song like a record at another speed, the pitch going with it; the
+        // plain speed setting keeps the pitch where it was.
+        val speed = AudioEffects.effectiveSpeed(settings)
+        val pitchCorrection = AudioEffects.pitchCorrection(settings)
+        if (speed != appliedSpeed || pitchCorrection != appliedPitchCorrection) {
+            mpv.setProperty("audio-pitch-correction", if (pitchCorrection) "yes" else "no")
+            mpv.setProperty("speed", String.format(Locale.US, "%.2f", speed))
+            appliedSpeed = speed
+            appliedPitchCorrection = pitchCorrection
         }
         val proxy = if (settings.proxyEnabled && settings.proxyType == "HTTP" && settings.proxyUrl.isNotBlank()) {
             if ("://" in settings.proxyUrl) settings.proxyUrl.trim() else "http://${settings.proxyUrl.trim()}"
@@ -445,6 +457,7 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         // The new mpv knows none of the settings the old one had.
         appliedFilters = null
         appliedSpeed = null
+        appliedPitchCorrection = null
         appliedProxy = null
         appliedGain = null
         appliedChannels = null

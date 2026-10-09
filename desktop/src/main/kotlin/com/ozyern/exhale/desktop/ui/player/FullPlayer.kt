@@ -1322,6 +1322,25 @@ internal fun PlayerMenu(song: SongItem, state: PlayerState, player: DesktopPlaye
             }
         }
 
+        // One tap to a different sound, as on Android: the record-speed presets, with 8D beside them.
+        val presets = com.ozyern.exhale.desktop.player.AudioEffects.SoundPresets
+        MenuCard(
+            TransportIcons.Equalizer,
+            "Sound",
+            listOfNotNull(
+                presets.firstOrNull { it.first == settings.soundPreset }?.second?.takeIf { settings.soundPreset != "NORMAL" },
+                "8D".takeIf { settings.eightD },
+            ).joinToString(" · ").ifEmpty { "Normal" },
+        ) {
+            Segmented(presets.map { it.second }, presets.indexOfFirst { it.first == settings.soundPreset }) { index ->
+                AppSettings.update { it.copy(soundPreset = presets[index].first) }
+            }
+            Spacer(Modifier.height(8.dp))
+            Segmented(listOf("8D off", "8D on"), if (settings.eightD) 1 else 0) { index ->
+                AppSettings.update { it.copy(eightD = index == 1) }
+            }
+        }
+
         MenuCard(NavIcons.Speed, "Speed", "${settings.playbackSpeed}×") {
             val speeds = listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
             Segmented(speeds.map { if (it == 1f) "1×" else "$it" }, speeds.indexOfFirst { it == settings.playbackSpeed }) { index ->
