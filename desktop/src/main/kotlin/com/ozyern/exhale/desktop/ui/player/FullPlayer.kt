@@ -1469,50 +1469,8 @@ private fun MenuCard(icon: ImageVector, label: String, value: String, content: @
  */
 @Composable
 private fun Segmented(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
-    if (labels.isEmpty()) return
-    val position by animateFloatAsState(selected.coerceAtLeast(0).toFloat(), spring(dampingRatio = 0.8f, stiffness = 340f), label = "segment_slide")
-    val shown by animateFloatAsState(if (selected >= 0) 1f else 0f, tween(160), label = "segment_show")
-    BoxWithConstraints(
-        Modifier
-            .fillMaxWidth()
-            .height(36.dp)
-            .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.07f)),
-    ) {
-        val slot = maxWidth / labels.size
-        Box(
-            Modifier
-                .width(slot)
-                .fillMaxHeight()
-                .graphicsLayer {
-                    translationX = position * slot.toPx()
-                    alpha = shown
-                }
-                .padding(3.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary),
-        )
-        Row(Modifier.fillMaxSize()) {
-            labels.forEachIndexed { index, label ->
-                val isSelected = index == selected
-                val tint by animateColorAsState(
-                    if (isSelected) MaterialTheme.colorScheme.onPrimary else Color.White.copy(alpha = 0.78f),
-                    tween(160),
-                    label = "segment_text",
-                )
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clip(CircleShape)
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onSelect(index) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = tint, maxLines = 1)
-                }
-            }
-        }
-    }
+    // The Android app's liquid glass segmented control: click a segment, or drag the pill along.
+    com.ozyern.exhale.desktop.ui.glass.LiquidSegmented(labels, selected, onSelect, accent = MaterialTheme.colorScheme.primary, fill = true)
 }
 
 @Composable

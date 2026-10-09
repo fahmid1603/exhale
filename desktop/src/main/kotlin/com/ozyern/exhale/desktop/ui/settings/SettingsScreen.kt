@@ -1313,18 +1313,16 @@ private fun ItemRow(item: Item) {
     val accent = LocalRowAccent.current.takeIf { it.isSpecified } ?: MaterialTheme.colorScheme.primary
     when (item) {
         is SwitchItem -> RowShell(item.title, item.subtitle, item.icon, item.key, onClick = { item.onChange(!item.checked) }) {
-            // Material's switch is a size too large for a row this compact.
-            Box(Modifier.size(width = 44.dp, height = 26.dp), contentAlignment = Alignment.Center) {
-                Switch(
-                    checked = item.checked,
-                    onCheckedChange = item.onChange,
-                    modifier = Modifier.graphicsLayer {
-                        scaleX = 0.82f
-                        scaleY = 0.82f
-                    },
-                    colors = SwitchDefaults.colors(checkedTrackColor = accent, checkedThumbColor = if (accent.luminance() > 0.5f) Color.Black else Color.White),
-                )
-            }
+            // The Android app's liquid glass switch: a drop of glass for a thumb, dragged or tapped.
+            com.ozyern.exhale.desktop.ui.glass.LiquidToggle(
+                checked = item.checked,
+                onCheckedChange = item.onChange,
+                accent = accent,
+                modifier = Modifier.graphicsLayer {
+                    scaleX = 0.82f
+                    scaleY = 0.82f
+                },
+            )
         }
         is ChoiceItem -> RowShell(item.title, item.subtitle, item.icon, item.key) { ChoiceControl(item, accent) }
         is SliderItem -> SliderRow(item, accent)
@@ -1388,60 +1386,13 @@ private fun ChoiceControl(item: ChoiceItem, accent: Color) {
 /** A segmented control whose selection is one pill that springs between the options. */
 @Composable
 private fun GlassSegmented(options: List<Pair<String, String>>, selected: String, accent: Color, onSelect: (String) -> Unit) {
-    val density = LocalDensity.current
-    val bounds = remember(options) { mutableStateMapOf<Int, Pair<Float, Float>>() }
-    val index = options.indexOfFirst { it.first == selected }.coerceAtLeast(0)
-    val x = remember { Animatable(0f) }
-    val w = remember { Animatable(0f) }
-    var placed by remember { mutableStateOf(false) }
-    val target = bounds[index]
-    LaunchedEffect(index, target) {
-        val b = target ?: return@LaunchedEffect
-        if (!placed) {
-            x.snapTo(b.first)
-            w.snapTo(b.second)
-            placed = true
-        } else {
-            launch { x.animateTo(b.first, spring(dampingRatio = 0.72f, stiffness = 420f)) }
-            w.animateTo(b.second, spring(dampingRatio = 0.72f, stiffness = 420f))
-        }
-    }
-    val onAccent = if (accent.luminance() > 0.5f) Color.Black else Color.White
-    Box(
-        Modifier
-            .height(36.dp)
-            .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.07f))
-            .border(0.7.dp, Color.White.copy(alpha = 0.08f), CircleShape)
-            .padding(3.dp),
-    ) {
-        if (placed) {
-            Box(
-                Modifier
-                    .offset { IntOffset(x.value.roundToInt(), 0) }
-                    .width(with(density) { w.value.toDp() })
-                    .fillMaxHeight()
-                    .clip(CircleShape)
-                    .background(accent),
-            )
-        }
-        Row(Modifier.fillMaxHeight()) {
-            options.forEachIndexed { i, (value, label) ->
-                val color by animateColorAsState(if (i == index) onAccent else MaterialTheme.colorScheme.onSurface, label = "segment_text")
-                Box(
-                    Modifier
-                        .fillMaxHeight()
-                        .onGloballyPositioned { bounds[i] = it.positionInParent().x to it.size.width.toFloat() }
-                        .clip(CircleShape)
-                        .clickable { onSelect(value) }
-                        .padding(horizontal = 14.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = color, maxLines = 1)
-                }
-            }
-        }
-    }
+    // A pill that springs between the options, and becomes a drop of glass when held and dragged.
+    com.ozyern.exhale.desktop.ui.glass.LiquidSegmented(
+        labels = options.map { it.second },
+        selected = options.indexOfFirst { it.first == selected },
+        onSelect = { onSelect(options[it].first) },
+        accent = accent,
+    )
 }
 
 @Composable
@@ -1470,14 +1421,14 @@ private fun SliderRow(item: SliderItem, accent: Color) {
                 modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(accent.copy(alpha = 0.12f)).padding(horizontal = 8.dp, vertical = 3.dp),
             )
         }
-        Slider(
+        com.ozyern.exhale.desktop.ui.glass.LiquidSlider(
             value = local,
             onValueChange = { local = it },
             onValueChangeFinished = { item.onChange(local) },
             valueRange = item.range,
             steps = item.steps,
-            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent),
-            modifier = Modifier.padding(start = if (item.icon != null) 50.dp else 0.dp),
+            accent = accent,
+            modifier = Modifier.padding(start = if (item.icon != null) 38.dp else 0.dp, top = 6.dp),
         )
     }
 }
@@ -1885,7 +1836,7 @@ private fun EqualizerEditor(s: Settings) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.width(64.dp),
                 )
-                Slider(
+                com.ozyern.exhale.desktop.ui.glass.LiquidSlider(
                     value = local,
                     onValueChange = { local = it },
                     onValueChangeFinished = {
@@ -1899,8 +1850,7 @@ private fun EqualizerEditor(s: Settings) {
                     },
                     valueRange = -12f..12f,
                     steps = 23,
-                    enabled = s.equalizerEnabled,
-                    colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent),
+                    accent = if (s.equalizerEnabled) accent else Color.White.copy(alpha = 0.35f),
                     modifier = Modifier.weight(1f),
                 )
                 Text(String.format("%+d dB", local.roundToInt()), style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(56.dp).padding(start = 8.dp))
@@ -1930,7 +1880,8 @@ private fun ProviderOrderEditor(s: Settings) {
                 TextButton(onClick = { move(index + 1) }, enabled = index < s.lyricsProviderOrder.lastIndex) {
                     Icon(TransportIcons.Collapse, contentDescription = "Move down", modifier = Modifier.size(18.dp))
                 }
-                Switch(
+                com.ozyern.exhale.desktop.ui.glass.LiquidToggle(
+                    modifier = Modifier.graphicsLayer { scaleX = 0.82f; scaleY = 0.82f },
                     checked = name !in s.lyricsDisabled,
                     onCheckedChange = { on ->
                         update { it.copy(lyricsDisabled = if (on) it.lyricsDisabled - name else it.lyricsDisabled + name) }

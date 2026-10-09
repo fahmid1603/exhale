@@ -46,6 +46,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -179,7 +180,7 @@ private fun SourceRow(
         Spacer(Modifier.width(10.dp))
         TextButton(onClick = onTest) { Text("Test") }
         TextButton(onClick = onRemove) { Text("Remove", color = scheme.error) }
-        Switch(checked = source.enabled, onCheckedChange = onToggle)
+        com.ozyern.exhale.desktop.ui.glass.LiquidToggle(checked = source.enabled, onCheckedChange = onToggle, modifier = Modifier.graphicsLayer { scaleX = 0.82f; scaleY = 0.82f })
     }
 }
 
