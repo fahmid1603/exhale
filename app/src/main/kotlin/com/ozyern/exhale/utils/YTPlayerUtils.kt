@@ -54,6 +54,9 @@ object YTPlayerUtils {
     private const val logTag = "YTPlayerUtils"
     private const val FAILED_CLIENT_BACKOFF_MS = 10 * 60 * 1000L
 
+    /** The size of the first piece playback asks for (MusicService.CHUNK_LENGTH), so validation asks the same. */
+    private const val PLAYBACK_PIECE_BYTES = 4L * 1024 * 1024
+
     class LoginRequiredForPlaybackException(
         val videoId: String,
         val targetUrl: String,
@@ -92,7 +95,14 @@ object YTPlayerUtils {
     /**
      * Clients used for fallback streams in case the streams of the main client do not work.
      */
+    //
+    // visionOS, iPadOS and iOS first: on a signed-out session they are the ones whose audio URLs come
+    // ready to play. visionOS leads because iOS's URLs answer a one-byte probe and then refuse the
+    // first real read with 403 — measured on every song tried — while visionOS's serve the whole file.
+    // With iOS ahead and the two tied on bitrate, iOS won every tie and songs sat at 00:00.
     private val STREAM_FALLBACK_CLIENTS: Array<YouTubeClient> = arrayOf(
+        VISIONOS,
+        IPADOS,
         IOS,
         MOBILE,
         ANDROID_MUSIC,
@@ -103,8 +113,6 @@ object YTPlayerUtils {
         ANDROID_CREATOR,
         ANDROID_TESTSUITE,
         ANDROID_UNPLUGGED,
-        IPADOS,
-        VISIONOS,
         TVHTML5,
         TVHTML5_SIMPLY_EMBEDDED_PLAYER,
         WEB,
@@ -119,6 +127,26 @@ object YTPlayerUtils {
     private val streamUrlCache = ConcurrentHashMap<String, CachedStreamUrl>()
     private val failedStreamClientsUntil = ConcurrentHashMap<String, Long>()
 
+    /**
+     * Clients whose streams were refused during real playback, for every song, for a while. Which
+     * clients YouTube serves is decided by the network and the session, not by the song: remembered
+     * per song only, a client refused on one track was handed the next one too, and the same failure
+     * came round every few songs. Used to order clients, never to exclude them, so a network blip that
+     * refuses everything can't leave nothing to try.
+     */
+    private val failedClientsEverywhereUntil = ConcurrentHashMap<String, Long>()
+
+    /** The client whose stream last validated, tried first next time: the network's answer rarely changes song to song. */
+    @Volatile private var lastWorkingClient: YouTubeClient? = null
+
+    private fun failedEverywhere(clientKey: String): Boolean {
+        val key = normalizeStreamClientKey(clientKey)
+        val until = failedClientsEverywhereUntil[key] ?: return false
+        if (until > System.currentTimeMillis()) return true
+        failedClientsEverywhereUntil.remove(key)
+        return false
+    }
+
     fun invalidateCachedStreamUrls(videoId: String) {
         val prefix = "$videoId:"
         streamUrlCache.keys.removeIf { it.startsWith(prefix) }
@@ -132,6 +160,11 @@ object YTPlayerUtils {
         if (normalizedClientKey.isEmpty()) return
         failedStreamClientsUntil[buildFailedClientKey(videoId, normalizedClientKey)] =
             System.currentTimeMillis() + FAILED_CLIENT_BACKOFF_MS
+        // A 403 is the client being refused, which holds for the next song as much as this one.
+        if (httpStatusCode == 403) {
+            failedClientsEverywhereUntil[normalizedClientKey] = System.currentTimeMillis() + FAILED_CLIENT_BACKOFF_MS
+            if (lastWorkingClient?.clientName?.uppercase(Locale.US) == normalizedClientKey) lastWorkingClient = null
+        }
     }
 
     fun markPreferredClientFailed(videoId: String, client: PlayerStreamClient, httpStatusCode: Int?) {
@@ -365,9 +398,12 @@ object YTPlayerUtils {
             val streamClientsInOrder =
                 buildList {
                     add(preferredYouTubeClient)
+                    lastWorkingClient?.let(::add)
                     addAll(orderedFallbackClients)
                     if (preferredYouTubeClient != MAIN_CLIENT) add(MAIN_CLIENT)
                 }.distinct()
+                    // Stable: within each half the order above stands.
+                    .sortedBy { if (failedEverywhere(it.clientName)) 1 else 0 }
 
             // In MAX mode we do not accept the first client that merely works — see
             // [MAX_MODE_TARGET_BITRATE_BPS]. This holds the best validated result seen so far
@@ -698,6 +734,8 @@ object YTPlayerUtils {
             }
 
             Timber.tag(logTag).i("Successfully obtained playback data with format: ${format.mimeType}, bitrate: ${format.bitrate}")
+            val servedBy = streamUrl.toHttpUrlOrNull()?.queryParameter("c")
+            streamClientsInOrder.firstOrNull { it.clientName.equals(servedBy, ignoreCase = true) }?.let { lastWorkingClient = it }
             if (probeForBest) recordBestScore(ceilingName, formatScore(format, preferredCodec))
 
             streamUrlCache[buildCacheKey(videoId, format.itag)] =
@@ -1074,11 +1112,16 @@ object YTPlayerUtils {
             val resolvedUserAgent = StreamClientUtils.resolveUserAgent(clientParam).ifEmpty { userAgent }
             val originReferer = StreamClientUtils.resolveOriginReferer(clientParam)
 
+            // The first piece exactly as playback will ask for it. A one-byte probe passed URLs that
+            // then refused every real read — the iOS client's, on every song tried — so the song was
+            // handed a stream that could not play, and sat at 00:00 until it was skipped. Only the
+            // status is read; the body is never downloaded.
+            val firstPiece = "bytes=0-${PLAYBACK_PIECE_BYTES - 1}"
             val probeRanges =
                 if (StreamClientUtils.isWebClient(clientParam)) {
-                    listOf("bytes=0-0", "bytes=262144-262145", "bytes=1048576-1048577")
+                    listOf(firstPiece, "bytes=262144-262145", "bytes=1048576-1048577")
                 } else {
-                    listOf("bytes=0-0")
+                    listOf(firstPiece)
                 }
 
             for (range in probeRanges) {

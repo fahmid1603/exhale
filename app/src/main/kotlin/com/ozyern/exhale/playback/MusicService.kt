@@ -1898,7 +1898,7 @@ class MusicService :
          * To prevent a "runaway diesel engine" scenario, force the user to take action after
          * too many errors come up too quickly. Pause to show player "stopped" state
          */
-        consecutivePlaybackErr += 2
+        consecutivePlaybackErr += 1
         val nextWindowIndex = player.nextMediaItemIndex
         val failed = player.currentMediaItem?.mediaMetadata?.title?.toString()
 
@@ -5072,6 +5072,9 @@ class MusicService :
         }
 
    if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED)) {
+        // A song that plays ends the run of failures. Never reset, the count only ever grew: three
+        // songs that failed hours apart added up to "several in a row" and playback stopped.
+        if (player.isPlaying) consecutivePlaybackErr = 0
         ensurePresenceManager()
         // Scrobble: Track play/pause state
         scrobbleManager?.onPlayerStateChanged(player.isPlaying, player.currentMetadata, duration = player.duration)
@@ -5617,7 +5620,8 @@ class MusicService :
                                 }
                             } else {
                                 // Stored where the lines below look first, so it is not asked twice.
-                                youtube.await().getOrNull()?.let { storeResolvedStream(mediaId, it) }
+                                withTimeoutOrNull(RESOLVE_TIMEOUT_MS) { youtube.await() }
+                                    ?.getOrNull()?.let { storeResolvedStream(mediaId, it) }
                             }
                             first
                         }
@@ -5639,14 +5643,16 @@ class MusicService :
             }
 
             val playbackData = runBlocking(Dispatchers.IO) {
-                YTPlayerUtils.playerResponseForPlayback(
-                    mediaId,
-                    audioQuality = audioQuality,
-                    connectivityManager = connectivityManager,
-                    preferredStreamClient = preferredStreamClient,
-                    avoidCodecs = avoidStreamCodecs,
-                    preferredCodec = preferredAudioCodec,
-                )
+                withTimeoutOrNull(RESOLVE_TIMEOUT_MS) {
+                    YTPlayerUtils.playerResponseForPlayback(
+                        mediaId,
+                        audioQuality = audioQuality,
+                        connectivityManager = connectivityManager,
+                        preferredStreamClient = preferredStreamClient,
+                        avoidCodecs = avoidStreamCodecs,
+                        preferredCodec = preferredAudioCodec,
+                    )
+                } ?: Result.failure(java.net.SocketTimeoutException("No stream for $mediaId within ${RESOLVE_TIMEOUT_MS / 1000} s"))
             }.getOrElse { throwable ->
                 when (throwable) {
                     is YTPlayerUtils.LoginRequiredForPlaybackException -> {
@@ -6833,6 +6839,13 @@ class MusicService :
         const val WARM_UP_VIDEO_ID = "jNQXAC9IVRw"
         const val PERSISTENT_AUTOMIX_FILE = "persistent_automix.data"
         const val PERSISTENT_PLAYER_STATE_FILE = "persistent_player_state.data"
-        const val MAX_CONSECUTIVE_ERR = 5
+        /** Failures in a row, with nothing playing between them, before playback stops and says so. */
+        const val MAX_CONSECUTIVE_ERR = 4
+
+        /**
+         * The longest a song may wait for its stream to be found. Past this it is an error like any
+         * other — retried, then skipped — rather than a player sitting at 00:00 with no end in sight.
+         */
+        const val RESOLVE_TIMEOUT_MS = 25_000L
     }
 }
