@@ -215,21 +215,28 @@ fun Modifier.dockGlass(
     backdrop: Backdrop = LocalAppBackdrop.current,
     dark: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
 ): Modifier {
-    // A mid grey in dark theme rather than near-black: over colour it lets the page's own hue come
-    // through the pane instead of being dimmed under it.
-    val film = if (dark) Color(0xFF4A4A4E).copy(alpha = 0.32f) else Color(0xFFFAFAFA).copy(alpha = 0.42f)
+    // BitChord's dock glass, number for number (their LiquidGlass.kt, from Echo's Apple-matched
+    // config): half again the saturation, an 8dp blur, a 24dp lens with depth and colour fringing
+    // at the rim, and a near-black film at 40%. Ours was a 2dp blur under a thin grey film — the
+    // page read straight through it, so it looked like a tint rather than a slab of glass.
+    val film = if (dark) Color(0xFF121212).copy(alpha = 0.40f) else Color(0xFFFAFAFA).copy(alpha = 0.40f)
     return this.drawBackdrop(
         backdrop = backdrop,
         shape = { shape },
         effects = {
-            colorControls(saturation = 1.6f)
-            blur(2f.dp.toPx())
+            colorControls(saturation = 1.5f)
+            blur(8f.dp.toPx())
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                lens(19f.dp.toPx(), 29f.dp.toPx())
+                lens(
+                    refractionHeight = 24f.dp.toPx(),
+                    refractionAmount = 24f.dp.toPx(),
+                    depthEffect = true,
+                    chromaticAberration = true,
+                )
             }
         },
-        highlight = { Highlight.Default.copy(width = 0.8f.dp, alpha = 0.5f) },
-        shadow = { Shadow() },
+        highlight = { Highlight.Default },
+        shadow = { Shadow.Default },
         onDrawSurface = { drawRect(film) },
     )
 }
