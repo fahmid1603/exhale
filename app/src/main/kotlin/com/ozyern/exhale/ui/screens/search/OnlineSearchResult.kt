@@ -395,7 +395,11 @@ fun OnlineSearchResult(
                     }
                 }
 
-                if (allModeSections.isEmpty() && isAllModeLoaded) {
+                // Not under a link's match or a playlist import: something was found, the rest
+                // is only still on its way.
+                if (allModeSections.isEmpty() && isAllModeLoaded && viewModel.linkMatch == null &&
+                    !viewModel.linkLoading && viewModel.spotifyPlaylistLink == null
+                ) {
                     item {
                         EmptyPlaceholder(
                             icon = R.drawable.search,

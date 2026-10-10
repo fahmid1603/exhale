@@ -70,11 +70,26 @@ constructor(
             viewModelScope.launch {
                 linkMatch = runCatching { com.ozyern.exhale.utils.MusicLinks.resolve(query) }.getOrNull()
                 linkLoading = false
-                // Not something it could follow: search the text after all rather than show nothing.
-                if (linkMatch == null) {
-                    YouTube.searchSummary(query).onSuccess {
-                        summaryPage = it.filterExplicit(context.dataStore.get(HideExplicitKey, false))
-                            .filterVideo(context.dataStore.get(HideVideoKey, false)).songsFirst()
+                // Found: the ordinary results for that song underneath it — the page used to say
+                // "No results found" right under the match. Not something it could follow: the
+                // text is searched after all rather than show nothing.
+                val found = linkMatch
+                val by = when (found) {
+                    is com.ozyern.exhale.innertube.models.SongItem -> found.artists.joinToString(" ") { it.name }
+                    is com.ozyern.exhale.innertube.models.AlbumItem -> found.artists?.joinToString(" ") { it.name }.orEmpty()
+                    else -> ""
+                }
+                YouTube.searchSummary(if (found != null) "${found.title} $by".trim() else query).onSuccess { page ->
+                    val cleaned = page.filterExplicit(context.dataStore.get(HideExplicitKey, false))
+                        .filterVideo(context.dataStore.get(HideVideoKey, false)).songsFirst()
+                    summaryPage = if (found == null) {
+                        cleaned
+                    } else {
+                        SearchSummaryPage(
+                            cleaned.summaries
+                                .map { it.copy(items = it.items.filterNot { item -> item.id == found.id }) }
+                                .filter { it.items.isNotEmpty() },
+                        )
                     }
                 }
             }

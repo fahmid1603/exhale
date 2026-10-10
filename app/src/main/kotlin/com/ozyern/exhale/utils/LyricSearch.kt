@@ -57,6 +57,7 @@ object LyricSearch {
         ).execute().use { if (it.isSuccessful) it.body?.string() else null } ?: return@runCatching emptyList()
         val sections = JSONObject(body).getJSONObject("response").getJSONArray("sections")
         val found = LinkedHashMap<String, Hit>()
+        val typed = norm(query).split(' ').filter { it.length > 1 }.toSet()
         // Top hit first, then the lyric matches (which carry the matching line), then songs.
         for (wanted in listOf("top_hit", "lyric", "song")) {
             for (s in 0 until sections.length()) {
@@ -67,8 +68,11 @@ object LyricSearch {
                     val hit = list.getJSONObject(h)
                     val result = hit.optJSONObject("result") ?: continue
                     if (result.optString("_type") != "song") continue
+                    // The highlight is a few lines around the match; the one shown is the line that
+                    // shares the most words with what was typed, not simply the first of them.
                     val line = hit.optJSONArray("highlights")?.optJSONObject(0)?.optString("value")
-                        ?.lineSequence()?.map { it.trim() }?.firstOrNull { it.isNotEmpty() }
+                        ?.lineSequence()?.map { it.trim() }?.filter { it.isNotEmpty() }?.toList()
+                        ?.maxByOrNull { candidate -> norm(candidate).split(' ').count { it in typed } }
                     val (title, artist) = unwrap(result.optString("title"), result.optString("artist_names"))
                     if (title.isBlank()) continue
                     val key = norm("$title $artist")
