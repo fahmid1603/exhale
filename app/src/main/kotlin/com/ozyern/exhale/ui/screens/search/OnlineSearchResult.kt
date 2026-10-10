@@ -325,25 +325,16 @@ fun OnlineSearchResult(
                     }
                 }
                 // A line of a song typed into search: the songs it comes from, above everything
-                // else — leaving out any YouTube already put first, so nothing shows twice.
-                val alreadyFirst = allModeSections.firstOrNull()?.second?.take(2)?.map { it.id }.orEmpty()
-                val fromLyrics = viewModel.lyricMatches.filter { it.song.id !in alreadyFirst }
+                // else, each marked as found by its lyrics with the line that matched — even one
+                // YouTube also put first, so the reason it is there is never missing.
+                val fromLyrics = viewModel.lyricMatches
                 if (fromLyrics.isNotEmpty()) {
                     item(key = "lyrics_header") {
                         SearchSectionHeader(title = "From the lyrics", onSeeAll = null, modifier = Modifier.animateItem())
                     }
                     itemsIndexed(fromLyrics, key = { _, match -> "lyrics/${match.song.id}" }) { i, match ->
                         ytItemContent(match.song)
-                        match.line?.let { line ->
-                            Text(
-                                text = "“$line”",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(start = 84.dp, end = 20.dp, bottom = 8.dp),
-                            )
-                        }
+                        LyricsMatchNote(line = match.line)
                         if (i < fromLyrics.lastIndex) SearchRowDivider()
                     }
                 }
@@ -893,5 +884,50 @@ private fun TopResultButton(icon: Int, label: String, onClick: () -> Unit) {
         Icon(painterResource(icon), contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(6.dp))
         Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+/**
+ * Under a song found through its lyrics: a small "Lyrics match" capsule, then the line that
+ * matched, so it is plain why a song with another title came up for what was typed.
+ */
+@androidx.compose.runtime.Composable
+private fun LyricsMatchNote(line: String?) {
+    val accent = MaterialTheme.colorScheme.primary
+    androidx.compose.foundation.layout.Row(
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        modifier = Modifier.padding(start = 84.dp, end = 20.dp, bottom = 10.dp),
+    ) {
+        androidx.compose.foundation.layout.Row(
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            modifier = Modifier
+                .background(accent.copy(alpha = 0.16f), androidx.compose.foundation.shape.CircleShape)
+                .padding(horizontal = 8.dp, vertical = 3.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.lyrics),
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(12.dp),
+            )
+            androidx.compose.foundation.layout.Spacer(Modifier.width(4.dp))
+            Text(
+                text = "Lyrics match",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                color = accent,
+                maxLines = 1,
+            )
+        }
+        if (line != null) {
+            androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
+            Text(
+                text = "“$line”",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        }
     }
 }

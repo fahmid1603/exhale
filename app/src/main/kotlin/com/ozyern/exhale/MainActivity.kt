@@ -1146,14 +1146,17 @@ class MainActivity : ComponentActivity() {
                     // A null route counts as Home: it is the start destination, and a pill that
                     // changes height for one frame of the first composition is worse than one
                     // that is briefly the wrong size.
-                    val useCompactPlayer = currentRoute != null && currentRoute != Screens.Home.route
+                    // The slim pill everywhere, Home included: Home's taller one made the player change size
+                    // between tabs, and Library and Mood & Genres are the size it should be.
+                    val useCompactPlayer = currentRoute != null
 
                     val isTabRoute =
                         navBackStackEntry?.destination?.route == null ||
                             navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route }
-                    // Off the tabs — Settings, an album, an artist — the dock comes along folded,
-                    // as State B: home | the song | search. It used to drop away and leave the
-                    // full mini player floating on its own there.
+                    // Off the tabs — Settings, an album, an artist — the dock comes along. It used to
+                    // drop away and leave the full mini player floating on its own there. It arrives
+                    // open (State A) and folds to home | the song | search as the page scrolls;
+                    // Settings keeps it folded.
                     // In Settings the dock only comes along while something plays: with nothing to
                     // show it is two buttons hovering over the foot of a page that has its own
                     // back button and its own search capsule there.
@@ -1333,6 +1336,7 @@ class MainActivity : ComponentActivity() {
                             shouldShowNavigationBar,
                             playerBottomSheetState.isDismissed,
                             dockOnPage,
+                            onSettingsRoute,
                         ) {
                             var bottom = bottomInset
                             if (shouldShowNavigationBar && !useRail) bottom += getBottomNavPadding()
@@ -1341,9 +1345,10 @@ class MainActivity : ComponentActivity() {
                             // shortening it, because the sheet's collapsed bound is captured once
                             // in `rememberBottomSheetState` and cannot be re-derived per route
                             // without resetting the sheet.
-                            // Off the tabs the song rides inside the folded dock, so there is no separate
+                            // In Settings the song rides inside the folded dock, so there is no separate
                             // mini player above it to leave room for — that room was the empty band.
-                            if (!playerBottomSheetState.isDismissed && !(dockOnPage && !useRail)) {
+                            // Every other page opens with the dock open and the mini player above it.
+                            if (!playerBottomSheetState.isDismissed && !(dockOnPage && onSettingsRoute && !useRail)) {
                                 bottom += MiniPlayerHeight
                             }
                             windowsInsets
@@ -1392,6 +1397,9 @@ class MainActivity : ComponentActivity() {
                             searchBarScrollBehavior.state.resetHeightOffset()
                             topAppBarScrollBehavior.state.resetHeightOffset()
                         }
+                        // Every page opens with the dock open; it folds once that page is scrolled.
+                        // A fold left over from the last page would open an album already folded.
+                        if (previousRoute != currentRoute) searchBarScrollBehavior.state.resetHeightOffset()
 
                         previousRoute = currentRoute
 
@@ -2229,6 +2237,7 @@ class MainActivity : ComponentActivity() {
 
                                         val bottomBarCollapsed by remember(
                                             dockOnPage,
+                                            onSettingsRoute,
                                             isSettingsScreen,
                                             isSearchScreen,
                                             isSearchResultsRoute,
@@ -2238,7 +2247,10 @@ class MainActivity : ComponentActivity() {
                                             nowPlayingMetadata,
                                         ) {
                                             derivedStateOf {
-                                                (dockOnPage && !useRail) ||
+                                                // Off the tabs the dock now arrives open, as State A, and folds
+                                                // when the page is scrolled, the way BitChord's does. Settings keeps
+                                                // it folded: its own search capsule sits at the foot of the page.
+                                                (dockOnPage && onSettingsRoute && !useRail) ||
                                                 shouldShowNavigationBar &&
                                                         !useRail &&
                                                         !isSettingsScreen &&

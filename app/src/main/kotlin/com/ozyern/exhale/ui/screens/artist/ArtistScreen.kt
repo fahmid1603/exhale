@@ -8,6 +8,7 @@ package com.ozyern.exhale.ui.screens.artist
 
 import com.kyant.backdrop.backdrops.layerBackdrop
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.aspectRatio
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
@@ -267,7 +268,18 @@ fun ArtistScreen(
         showLocal = libraryArtist?.artist?.isLocal == true
     }
 
-    val palette = com.ozyern.exhale.ui.component.rememberReleasePalette(thumbnail?.resize(1200, 1200))
+    // Apple Music's photograph of the artist and their title logo, found by name (BitChord's
+    // source). YouTube's square channel picture stands in until — and unless — it arrives.
+    var appleArt by remember(artistName) {
+        mutableStateOf(artistName?.let { com.ozyern.exhale.utils.AppleArtistArtRepository.cached(it) })
+    }
+    LaunchedEffect(artistName) {
+        val name = artistName?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        appleArt = com.ozyern.exhale.utils.AppleArtistArtRepository.artFor(name) ?: appleArt
+    }
+    val heroImage = appleArt?.heroUrl ?: thumbnail?.resize(1200, 1200)
+
+    val palette = com.ozyern.exhale.ui.component.rememberReleasePalette(heroImage)
     val artistBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
     val artistConfiguration = LocalConfiguration.current
     val artistArtHeight = remember(artistConfiguration.screenWidthDp, artistConfiguration.screenHeightDp) {
@@ -284,7 +296,7 @@ fun ArtistScreen(
         // one wide band of blur across the join so photo and page are one surface.
         if (artistPage != null || showLocal) {
             com.ozyern.exhale.ui.component.ReleaseBackground(
-                artworkUrl = thumbnail?.resize(1200, 1200),
+                artworkUrl = heroImage,
                 palette = palette,
                 artHeight = artistArtHeight,
                 listState = lazyListState,
@@ -303,7 +315,7 @@ fun ArtistScreen(
                 }
             }
             com.ozyern.exhale.ui.component.ReleaseMergeBand(
-                artworkUrl = thumbnail?.resize(1200, 1200),
+                artworkUrl = heroImage,
                 palette = palette,
                 artHeight = artistArtHeight,
                 listState = lazyListState,
@@ -426,49 +438,6 @@ fun ArtistScreen(
                     // margin as everything under them, over a blurred wash of the artist's own
                     // image. That is roughly two thirds of the vertical space for the same
                     // information, and the first section header now lands above the fold.
-                    val countsLine = run {
-                        val songSections = artistPage?.sections?.filter { section ->
-                            section.items.any { it is SongItem }
-                        }
-                        val songCount = if (showLocal) {
-                            librarySongs.size
-                        } else {
-                            songSections
-                                ?.flatMap { it.items }
-                                ?.filterIsInstance<SongItem>()
-                                ?.distinctBy { it.id }
-                                ?.size ?: librarySongs.size
-                        }
-                        val hasMoreSongs =
-                            !showLocal && songSections?.any { it.moreEndpoint != null } == true
-
-                        val albumSections = artistPage?.sections?.filter { section ->
-                            section.items.any { it is AlbumItem }
-                        }
-                        val albumCount = if (showLocal) {
-                            libraryAlbums.size
-                        } else {
-                            albumSections
-                                ?.flatMap { it.items }
-                                ?.filterIsInstance<AlbumItem>()
-                                ?.distinctBy { it.id }
-                                ?.size ?: libraryAlbums.size
-                        }
-                        val hasMoreAlbums =
-                            !showLocal && albumSections?.any { it.moreEndpoint != null } == true
-
-                        buildList {
-                            if (songCount > 0) {
-                                val n = if (hasMoreSongs) "$songCount+" else songCount.toString()
-                                add("$n ${stringResource(R.string.songs)}")
-                            }
-                            if (albumCount > 0) {
-                                val n = if (hasMoreAlbums) "$albumCount+" else albumCount.toString()
-                                add("$n ${stringResource(R.string.albums)}")
-                            }
-                        }.joinToString("  ·  ").takeIf { it.isNotEmpty() }
-                    }
-
                     Column(modifier = Modifier.fillMaxWidth()) {
                         // The hero: the artist, full-bleed, sharp, with the page dissolving out
                         // of the bottom of them.
@@ -525,33 +494,27 @@ fun ArtistScreen(
                                     ),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                ArtistDisplayName(name = artistName ?: stringResource(R.string.unknown_artist), font = nameFont, color = palette.onBackground)
+                                // Apple's own title logo for the artist when there is one, drawn
+                                // as they draw it; otherwise the name in the chosen face.
+                                val logo = appleArt?.logoUrl
+                                if (logo != null) {
+                                    val aspect = appleArt?.logoAspect?.coerceIn(0.4f, 6f) ?: 1f
+                                    val maxLogoHeight = artistArtHeight * 0.28f
+                                    BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                        val width = minOf(maxWidth * 0.82f, maxLogoHeight * aspect)
+                                        coil3.compose.AsyncImage(
+                                            model = logo,
+                                            contentDescription = artistName,
+                                            modifier = Modifier.width(width).aspectRatio(aspect),
+                                        )
+                                    }
+                                } else {
+                                    ArtistDisplayName(name = artistName ?: stringResource(R.string.unknown_artist), font = nameFont, color = palette.onBackground)
+                                }
                             }
                         }
 
                         val isSubscribed = libraryArtist?.artist?.bookmarkedAt != null
-                        // YouTube's own reach, when it gives it; the counts of
-                        // what is on this page when it doesn't.
-                        val subscribers = artistPage?.artist?.subscriberCountText?.takeIf { !showLocal && it.isNotBlank() }
-                        val listeners = artistPage?.artist?.monthlyListenerCountText?.takeIf { !showLocal && it.isNotBlank() }
-                        if (subscribers != null || listeners != null) {
-                            ArtistStatsRow(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 14.dp),
-                            ) {
-                                subscribers?.let { ArtistStatChip(R.drawable.group, it.substringBefore(' '), "subscribers", Color(0xFFFF375F), palette) }
-                                listeners?.let { ArtistStatChip(R.drawable.headphones, it.substringBefore(' '), "monthly listeners", Color(0xFF0A84FF), palette) }
-                            }
-                        } else if (countsLine != null) {
-                            Text(
-                                text = countsLine,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = palette.onBackgroundVariant,
-                                textAlign = TextAlign.Center,
-                                maxLines = 1,
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
-                            )
-                        }
-
                         // The action row: subscribe beside Play — the circle about this
                         // artist — then the white Play pill, then shuffle.
                         Row(
@@ -622,27 +585,24 @@ fun ArtistScreen(
                             )
                         }
 
-                        Spacer(Modifier.height(14.dp))
+                        Spacer(Modifier.height(22.dp))
 
-                        // Artist Description (expandable)
-                        //
-                        // Left-aligned, and truncated by LINE COUNT rather than by character count.
-                        // Centring a paragraph is fine for one line and hostile past that — every
-                        // line starts at a different x, so the eye has to hunt for the start of the
-                        // next one, and this block routinely runs to eight or ten lines expanded.
-                        // The old `description.take(100)` also cut mid-word and then appended its
-                        // own ellipsis on top of an `overflow = Ellipsis` that was already doing the
-                        // job, so a clipped bio could end in two ellipses.
-                        val description = artistPage?.description
-                        if (!description.isNullOrBlank()) {
-                            com.ozyern.exhale.ui.component.ReleaseAbout(
-                                title = "About ${artistName.orEmpty()}".trim(),
-                                text = description,
+                        // The newest release, on a card of its own under the actions — what
+                        // someone opening an artist most often came for (as BitChord does).
+                        val latest = viewModel.latestRelease.takeIf { !showLocal }
+                        if (latest != null) {
+                            LatestReleaseCard(
+                                album = latest,
                                 palette = palette,
+                                onClick = { navController.navigate("album/${latest.id}") },
+                                onLongClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    menuState.show {
+                                        YouTubeAlbumMenu(albumItem = latest, navController = navController, onDismiss = menuState::dismiss)
+                                    }
+                                },
                             )
                         }
-
-                        Spacer(modifier = Modifier.height(16.dp))
                     }
                 }
 
@@ -831,8 +791,12 @@ fun ArtistScreen(
                             // album shelves under a long list. The next column peeks in from the
                             // edge so it is plain there is more, and a fling lands on a column.
                             item(key = "youtube_song_columns_${section.title}") {
-                                val columns = remember(section.items) {
-                                    section.items.distinctBy { it.id }.filterIsInstance<SongItem>().take(20).chunked(4)
+                                // Up to twenty: the artist's top-songs playlist once it has loaded,
+                                // the landing page's handful until then.
+                                val fullTopSongs = viewModel.topSongs
+                                val columns = remember(section.items, fullTopSongs) {
+                                    (fullTopSongs.ifEmpty { section.items.filterIsInstance<SongItem>() })
+                                        .distinctBy { it.id }.take(20).chunked(4)
                                 }
                                 val rowState = rememberLazyListState()
                                 BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -970,6 +934,21 @@ fun ArtistScreen(
                     }
                 }
 
+                // The artist's story closes the page, after the music, rather than sitting
+                // between the Play button and the songs. Left-aligned and cut by line count.
+                val description = artistPage?.description
+                if (!showLocal && !description.isNullOrBlank()) {
+                    item(key = "about") {
+                        Column(Modifier.padding(top = 28.dp)) {
+                            com.ozyern.exhale.ui.component.ReleaseAbout(
+                                title = "About ${artistName.orEmpty()}".trim(),
+                                text = description,
+                                palette = palette,
+                            )
+                        }
+                    }
+                }
+
                 // Bottom spacing
                 item {
                     Spacer(modifier = Modifier.height(16.dp))
@@ -1053,73 +1032,82 @@ private fun ArtistActionButton(
     }
 }
 
-/** A small glass chip under the artist's name: one of YouTube's reach figures, with its glyph. */
+/**
+ * The artist's newest release, on a card the width of the page: the sleeve, what it is and when,
+ * and its title, on a light veil (after BitChord's top-release card). A light container rather
+ * than a dark one: on Apple's pages a dark panel reads as a hole in the page.
+ */
 @Composable
-private fun ArtistStatsRow(modifier: Modifier, content: @Composable () -> Unit) {
-    // Side by side when they fit, the second under the first on a narrow phone.
-    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-    androidx.compose.foundation.layout.FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = modifier,
-    ) { content() }
-}
-
-@Composable
-private fun ArtistStatChip(
-    iconRes: Int,
-    count: String,
-    label: String,
-    tint: Color,
+private fun LatestReleaseCard(
+    album: AlbumItem,
     palette: com.ozyern.exhale.ui.component.ArtworkPalette,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
-    // A glass capsule with the figure first: a small disc in the stat's own colour holding its
-    // glyph — people for subscribers, headphones for listeners — then the number, bold, and what
-    // it counts, quieter. One reads at a glance as reach, the other as listening.
+    val shape = RoundedCornerShape(24.dp)
+    val coverShape = RoundedCornerShape(10.dp)
+    val kind = when (album.releaseType) {
+        com.ozyern.exhale.innertube.models.AlbumReleaseType.SINGLE -> "Single"
+        com.ozyern.exhale.innertube.models.AlbumReleaseType.EP -> "EP"
+        com.ozyern.exhale.innertube.models.AlbumReleaseType.ALBUM -> "Album"
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clip(CircleShape)
-            .background(palette.elevated.copy(alpha = 0.55f))
-            .border(0.5.dp, Color.White.copy(alpha = 0.14f), CircleShape)
-            .padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .clip(shape)
+            .background(Color.White.copy(alpha = 0.10f), shape)
+            .border(0.5.dp, Color.White.copy(alpha = 0.16f), shape)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(14.dp),
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
+        coil3.compose.AsyncImage(
+            model = album.thumbnail.resize(360, 360),
+            contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
             modifier = Modifier
-                .size(24.dp)
-                .clip(CircleShape)
-                .background(
-                    androidx.compose.ui.graphics.Brush.verticalGradient(
-                        listOf(tint, tint.copy(red = tint.red * 0.78f, green = tint.green * 0.78f, blue = tint.blue * 0.78f)),
-                    ),
-                ),
-        ) {
-            Icon(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(14.dp),
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = count,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
-            color = palette.onBackground,
-            maxLines = 1,
+                .size(84.dp)
+                .clip(coverShape)
+                .border(0.5.dp, Color.White.copy(alpha = 0.14f), coverShape)
+                .background(palette.elevated),
         )
-        Spacer(Modifier.width(4.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = palette.onBackgroundVariant,
-            maxLines = 1,
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = "Latest $kind".uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = palette.onBackgroundVariant,
+                maxLines = 1,
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text = album.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = palette.onBackground,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            album.year?.let { year ->
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "$kind · $year",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.onBackgroundVariant,
+                    maxLines = 1,
+                )
+            }
+        }
+        Icon(
+            painter = painterResource(R.drawable.navigate_next),
+            contentDescription = null,
+            tint = palette.onBackgroundVariant.copy(alpha = 0.7f),
+            modifier = Modifier.size(22.dp),
         )
     }
 }
-
 /** The artist's name, large, in [font]: the displayLarge credit, in the face of your choosing. */
 @Composable
 private fun ArtistDisplayName(name: String, font: ArtistNameFont, color: Color = Color.White) {

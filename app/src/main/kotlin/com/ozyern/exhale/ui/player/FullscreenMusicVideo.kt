@@ -16,8 +16,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import com.kyant.backdrop.backdrops.layerBackdrop
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -164,6 +167,9 @@ internal fun FullscreenMusicVideo(
             }
         }
 
+        // The video is recorded as the backdrop the controls are cut from, so every control is a
+        // piece of glass over the picture — it bends the video at its rim — as Apple's player is.
+        val videoBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
         Box(
             Modifier
                 .fillMaxSize()
@@ -183,92 +189,99 @@ internal fun FullscreenMusicVideo(
                 },
             contentAlignment = Alignment.Center,
         ) {
-            MusicVideoSurface(
-                stream = stream,
-                positionMs = { player.currentPosition },
-                isPlaying = isPlaying,
-                fitInside = true,
-                onError = onExit,
-                modifier = Modifier.fillMaxSize(),
-            )
+            Box(Modifier.fillMaxSize().layerBackdrop(videoBackdrop), contentAlignment = Alignment.Center) {
+                MusicVideoSurface(
+                    stream = stream,
+                    positionMs = { player.currentPosition },
+                    isPlaying = isPlaying,
+                    fitInside = true,
+                    onError = onExit,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
 
             AnimatedVisibility(
                 visible = controls,
-                enter = fadeIn(tween(160)),
-                exit = fadeOut(tween(260)),
+                enter = fadeIn(tween(180)) + androidx.compose.animation.scaleIn(tween(240), initialScale = 0.96f),
+                exit = fadeOut(tween(260)) + androidx.compose.animation.scaleOut(tween(260), targetScale = 0.98f),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                Box(Modifier.fillMaxSize()) {
-                    // Top: what is playing, and the way out.
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        // A soft dim so white glyphs hold on a bright frame; the glass does the rest.
+                        .background(Color.Black.copy(alpha = 0.18f))
+                        .systemBarsPadding()
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                ) {
+                    // Top left: the way out.
+                    VideoGlassButton(
+                        icon = R.drawable.close,
+                        diameter = 44.dp,
+                        iconSize = 20.dp,
+                        backdrop = videoBackdrop,
+                        modifier = Modifier.align(Alignment.TopStart),
+                        onClick = onExit,
+                    )
+
+                    // Centre: ten seconds back, play or pause, ten seconds on — each a clear disc.
                     Row(
+                        modifier = Modifier.align(Alignment.Center),
+                        horizontalArrangement = Arrangement.spacedBy(30.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .fillMaxWidth()
-                            .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent)))
-                            .systemBarsPadding()
-                            .padding(horizontal = 20.dp, vertical = 12.dp),
                     ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = metadata?.title.orEmpty(),
-                                style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold),
-                                color = Color.White,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = metadata?.artists?.joinToString { it.name }.orEmpty(),
-                                style = TextStyle(fontSize = 13.sp),
-                                color = Color.White.copy(alpha = 0.7f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                        VideoGlassButton(R.drawable.replay, 58.dp, 26.dp, videoBackdrop, badge = "10") {
+                            player.seekTo((player.currentPosition - 10_000L).coerceAtLeast(0L)); touched++
                         }
-                        VideoGlyph(R.drawable.fullscreen_exit, 24.dp, onClick = onExit)
+                        VideoGlassButton(if (isPlaying) R.drawable.pause else R.drawable.play, 78.dp, 36.dp, videoBackdrop) {
+                            if (player.isPlaying) player.pause() else player.play(); touched++
+                        }
+                        VideoGlassButton(R.drawable.replay, 58.dp, 26.dp, videoBackdrop, badge = "10", mirrored = true) {
+                            val end = player.duration.coerceAtLeast(0L)
+                            player.seekTo((player.currentPosition + 10_000L).coerceAtMost(end)); touched++
+                        }
                     }
 
-                    // Bottom: the clock either side of the line, the transport under it.
-                    Box(
+                    // Bottom: one glass capsule — what is playing, the track buttons, and the line.
+                    Column(
                         Modifier
                             .align(Alignment.BottomCenter)
+                            .widthIn(max = 760.dp)
                             .fillMaxWidth()
-                            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.62f))))
-                            .systemBarsPadding()
-                            .padding(horizontal = 22.dp, vertical = 12.dp),
-                        contentAlignment = Alignment.Center,
+                            .then(
+                                com.ozyern.exhale.ui.component.rememberChromeGlassModifier(
+                                    shape = RoundedCornerShape(28.dp),
+                                    dark = true,
+                                    tintAlpha = 0.22f,
+                                    blurRadius = 24.dp,
+                                    backdrop = videoBackdrop,
+                                ),
+                            )
+                            .padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
                     ) {
-                        Column(
-                            Modifier
-                                .widthIn(max = 640.dp)
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(24.dp))
-                                .background(Color(0xB3111014))
-                                .padding(horizontal = 18.dp, vertical = 8.dp),
-                        ) {
-                            VideoScrubber(player = player, onTouched = { touched++ })
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                VideoGlyph(R.drawable.skip_previous, 26.dp) { player.seekToPrevious(); touched++ }
-                                Spacer(Modifier.width(22.dp))
-                                VideoGlyph(R.drawable.replay, 26.dp, badge = "10") {
-                                    player.seekTo((player.currentPosition - 10_000L).coerceAtLeast(0L)); touched++
-                                }
-                                Spacer(Modifier.width(22.dp))
-                                VideoGlyph(if (isPlaying) R.drawable.pause else R.drawable.play, 38.dp) {
-                                    if (player.isPlaying) player.pause() else player.play(); touched++
-                                }
-                                Spacer(Modifier.width(22.dp))
-                                VideoGlyph(R.drawable.replay, 26.dp, badge = "10", mirrored = true) {
-                                    val end = player.duration.coerceAtLeast(0L)
-                                    player.seekTo((player.currentPosition + 10_000L).coerceAtMost(end)); touched++
-                                }
-                                Spacer(Modifier.width(22.dp))
-                                VideoGlyph(R.drawable.skip_next, 26.dp, enabled = canSkipNext) { player.seekToNext(); touched++ }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = metadata?.title.orEmpty(),
+                                    style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = metadata?.artists?.joinToString { it.name }.orEmpty(),
+                                    style = TextStyle(fontSize = 13.sp),
+                                    color = Color.White.copy(alpha = 0.66f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
+                            VideoGlyph(R.drawable.skip_previous, 22.dp) { player.seekToPrevious(); touched++ }
+                            VideoGlyph(R.drawable.skip_next, 22.dp, enabled = canSkipNext) { player.seekToNext(); touched++ }
+                        }
+                        Spacer(Modifier.size(8.dp))
+                        Box(Modifier.padding(end = 8.dp)) {
+                            VideoScrubber(player = player, onTouched = { touched++ })
                         }
                     }
                 }
@@ -277,6 +290,66 @@ internal fun FullscreenMusicVideo(
     }
 }
 
+/**
+ * A round control cut from clear glass over the video: it bends the picture at its rim, and
+ * squeezes a little under the finger.
+ */
+@Composable
+private fun VideoGlassButton(
+    icon: Int,
+    diameter: Dp,
+    iconSize: Dp,
+    backdrop: com.kyant.backdrop.Backdrop,
+    modifier: Modifier = Modifier,
+    badge: String? = null,
+    mirrored: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val squeeze by androidx.compose.animation.core.animateFloatAsState(
+        if (pressed) 0.9f else 1f,
+        androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 600f),
+        label = "videoGlassPress",
+    )
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(diameter)
+            .graphicsLayer { scaleX = squeeze; scaleY = squeeze }
+            .then(
+                com.ozyern.exhale.ui.component.rememberChromeGlassModifier(
+                    shape = CircleShape,
+                    dark = true,
+                    tintAlpha = 0.14f,
+                    blurRadius = 16.dp,
+                    backdrop = backdrop,
+                ),
+            )
+            .clickable(interactionSource = source, indication = null, onClick = onClick),
+    ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier
+                .size(iconSize)
+                .graphicsLayer { if (mirrored) scaleX = -1f },
+        )
+        if (badge != null) {
+            Text(
+                text = badge,
+                style = TextStyle(fontSize = (iconSize.value * 0.3f).sp, fontWeight = FontWeight.Bold),
+                color = Color.White,
+                modifier = Modifier.padding(top = (iconSize.value * 0.12f).dp),
+            )
+        }
+    }
+}
+/**
+ * Apple's scrubber: a thin line that thickens under the finger, the elapsed time under its left end
+ * and what is left under its right. Tap anywhere on it to jump, or drag.
+ */
 @Composable
 private fun VideoScrubber(player: androidx.media3.common.Player, onTouched: () -> Unit) {
     var position by remember { mutableLongStateOf(player.currentPosition) }
@@ -290,28 +363,65 @@ private fun VideoScrubber(player: androidx.media3.common.Player, onTouched: () -
             delay(250)
         }
     }
+    val fraction = when {
+        dragging -> dragValue
+        duration > 0 -> (position.toFloat() / duration).coerceIn(0f, 1f)
+        else -> 0f
+    }
     val shown = if (dragging) (dragValue * duration).toLong() else position
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        VideoTime(formatVideoTime(shown))
-        Slider(
-            value = if (dragging) dragValue else if (duration > 0) position.toFloat() / duration else 0f,
-            onValueChange = { dragging = true; dragValue = it; onTouched() },
-            onValueChangeFinished = {
-                if (duration > 0) player.seekTo((dragValue * duration).toLong())
-                dragging = false
-            },
-            enabled = duration > 0,
-            colors = SliderDefaults.colors(
-                thumbColor = Color.White,
-                activeTrackColor = Color.White,
-                inactiveTrackColor = Color.White.copy(alpha = 0.25f),
-            ),
-            modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
-        )
-        VideoTime(if (duration > 0) "−" + formatVideoTime(duration - shown) else formatVideoTime(0L))
+    val thickness by androidx.compose.animation.core.animateDpAsState(
+        if (dragging) 10.dp else 5.dp,
+        androidx.compose.animation.core.spring(dampingRatio = 0.7f, stiffness = 500f),
+        label = "scrubThickness",
+    )
+    Column {
+        Box(
+            contentAlignment = Alignment.CenterStart,
+            modifier = Modifier
+                .fillMaxWidth()
+                .size(height = 24.dp, width = 0.dp)
+                .pointerInput(duration) {
+                    if (duration <= 0) return@pointerInput
+                    detectTapGestures { at ->
+                        player.seekTo(((at.x / size.width).coerceIn(0f, 1f) * duration).toLong())
+                        onTouched()
+                    }
+                }
+                .pointerInput(duration) {
+                    if (duration <= 0) return@pointerInput
+                    detectHorizontalDragGestures(
+                        onDragStart = { at -> dragging = true; dragValue = (at.x / size.width).coerceIn(0f, 1f); onTouched() },
+                        onHorizontalDrag = { change, _ ->
+                            dragValue = (change.position.x / size.width).coerceIn(0f, 1f)
+                            onTouched()
+                        },
+                        onDragEnd = { player.seekTo((dragValue * duration).toLong()); dragging = false },
+                        onDragCancel = { dragging = false },
+                    )
+                },
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .size(height = thickness, width = 0.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.28f)),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(fraction)
+                        .size(height = thickness, width = 0.dp)
+                        .background(Color.White),
+                )
+            }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            VideoTime(formatVideoTime(shown))
+            Spacer(Modifier.weight(1f))
+            VideoTime(if (duration > 0) "−" + formatVideoTime(duration - shown) else formatVideoTime(0L))
+        }
     }
 }
-
 @Composable
 private fun VideoTime(text: String) {
     Text(
