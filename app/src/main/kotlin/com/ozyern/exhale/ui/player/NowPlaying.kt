@@ -735,12 +735,18 @@ internal fun NowPlayingScreen(
     // One fresh try when a stream dies mid-play, as the Windows app re-asks for its URL: a stale link
     // is the usual reason, and a new one usually plays.
     var videoRetry by remember(mediaMetadata.id) { mutableIntStateOf(0) }
+    var videoFailures by remember(mediaMetadata.id) { mutableIntStateOf(0) }
     LaunchedEffect(mediaMetadata.id, videoMode, videoRetry) {
         if (!videoMode || musicVideo != null || videoMissing) return@LaunchedEffect
         videoLoading = true
         val found = com.ozyern.exhale.playback.MusicVideo.find(mediaMetadata)
         videoLoading = false
-        if (found == null) {
+        if (found == null && com.ozyern.exhale.playback.MusicVideo.knownPresent(mediaMetadata.id)) {
+            // The video is there; its stream just didn't come this time. Not "no video": the switch
+            // stays, and the next tap asks again.
+            videoMode = false
+            android.widget.Toast.makeText(context, "Couldn't load the video, try again", android.widget.Toast.LENGTH_SHORT).show()
+        } else if (found == null) {
             videoMissing = true
             android.widget.Toast.makeText(context, "No music video for this song", android.widget.Toast.LENGTH_SHORT).show()
         } else {
@@ -966,13 +972,19 @@ internal fun NowPlayingScreen(
                     stream = video.stream,
                     positionMs = positionProvider,
                     isPlaying = isPlaying && !collapseStarted,
-                    onFirstFrame = { videoShown = true },
+                    onFirstFrame = {
+                        videoShown = true
+                        videoFailures = 0
+                    },
                     onError = {
                         val failed = musicVideo
                         musicVideo = null
-                        if (failed != null && videoRetry == 0) {
+                        // A link that played and then died is stale, and a fresh one plays: that is
+                        // allowed every time. Two failures in a row without a picture is a real no.
+                        if (failed != null && videoFailures < 2) {
                             com.ozyern.exhale.playback.MusicVideo.forgetStream(failed.videoId)
                             videoShown = false
+                            videoFailures++
                             videoRetry++
                             return@MusicVideoSurface
                         }

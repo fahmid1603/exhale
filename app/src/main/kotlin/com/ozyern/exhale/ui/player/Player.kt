@@ -237,8 +237,10 @@ fun BottomSheetPlayer(
     val (classicPlayer) = rememberPreference(ClassicPlayerKey, defaultValue = false)
     val (liquidGlassPlayer) = rememberPreference(com.ozyern.exhale.constants.LiquidGlassPlayerKey, false)
     // The Now Playing screen is a portrait layout; a phone on its side keeps the chosen design.
+    // Kept while a full-screen video is up: that turns the phone to landscape, and switching
+    // design then took the video — and the full-screen player itself — away with it.
     val nowPlaying = !classicPlayer &&
-        LocalConfiguration.current.orientation != Configuration.ORIENTATION_LANDSCAPE
+        (LocalConfiguration.current.orientation != Configuration.ORIENTATION_LANDSCAPE || FullscreenVideoState.active)
     val coverFlight = LocalCoverFlight.current
     if (coverFlight != null) SideEffect { coverFlight.enabled = nowPlaying }
 
@@ -854,7 +856,9 @@ fun BottomSheetPlayer(
 
 // distance
 
-        when (LocalConfiguration.current.orientation) {
+        // A full-screen video turns the phone; the portrait player stays put under it rather than
+        // being swapped for the landscape one, which would take the video away with it.
+        when (if (FullscreenVideoState.active) Configuration.ORIENTATION_PORTRAIT else LocalConfiguration.current.orientation) {
             Configuration.ORIENTATION_LANDSCAPE -> {
                 if (playerDesignStyle == PlayerDesignStyle.V5) {
                     val littleBackground = MaterialTheme.colorScheme.primaryContainer
@@ -1069,9 +1073,11 @@ fun BottomSheetPlayer(
                     enrichedMetadata?.let { metadata ->
                         // A phone on its side gets the two-column player; the portrait
                         // layouts are tall and ran off a short, wide window.
+                        // Not while a full-screen video is up: that turned the phone, and the
+                        // switch to the landscape player took the video's own screen away.
                         val landscapeWindow = androidx.compose.ui.platform.LocalConfiguration.current.let {
                             it.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-                        }
+                        } && !FullscreenVideoState.active
                         if (landscapeWindow) LandscapeNowPlaying(
                             playerSheetState = state,
                             navController = navController,

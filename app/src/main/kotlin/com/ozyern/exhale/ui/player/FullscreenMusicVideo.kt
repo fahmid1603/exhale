@@ -82,6 +82,15 @@ import kotlinx.coroutines.delay
  * the song with nothing to operate — and full screen is where the transport belongs. The sound is
  * still the song's own stream: every control here drives the song, and the picture follows it.
  */
+/**
+ * Whether a full-screen video is up. The player turns the phone to landscape for it, and a player
+ * in landscape normally switches to its landscape design — which took the Now Playing screen, and
+ * with it the video and this very dialog, away the moment the screen turned.
+ */
+object FullscreenVideoState {
+    var active by androidx.compose.runtime.mutableStateOf(false)
+}
+
 @Composable
 internal fun FullscreenMusicVideo(
     stream: YTPlayerUtils.VideoStream,
@@ -96,9 +105,26 @@ internal fun FullscreenMusicVideo(
 
     // Landscape while it is up, whichever way the phone was held; back to before on the way out.
     DisposableEffect(activity) {
+        FullscreenVideoState.active = true
         val before = activity?.requestedOrientation
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        onDispose { if (before != null) activity.requestedOrientation = before }
+        onDispose {
+            if (activity != null) {
+                // Back upright first: "unspecified" alone leaves the screen however the full-screen
+                // turned it on a device that isn't being rotated, and the player came back sideways.
+                // Then the system's own rotation again, a moment later.
+                activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                // Held until the screen is upright again: let go while it was still sideways, and
+                // for a moment the player switched to its landscape design, dropping the Now Playing
+                // screen and with it the video that was meant to carry on there.
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    FullscreenVideoState.active = false
+                    activity.requestedOrientation = before ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                }, 900)
+            } else {
+                FullscreenVideoState.active = false
+            }
+        }
     }
 
     Dialog(

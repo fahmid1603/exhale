@@ -25,8 +25,9 @@ import kotlin.math.abs
  *
  * Matching is deliberately strict: the same song title once the decorations are stripped, an
  * artist in common, and a running time close enough that the video and the song can be held in
- * step. A lyric video or a fan upload that passes all three is still that song; a live cut or a
- * cover version fails the running time or the artist, and no video beats the wrong one.
+ * step. Among those, the artist's own upload wins; a fan's lyric video is taken only when there is
+ * nothing better, and sped-up, live, cover and karaoke versions are never taken — no video beats
+ * the wrong one.
  */
 object MusicVideo {
     data class Found(val videoId: String, val stream: YTPlayerUtils.VideoStream, val offsetMs: Long)
@@ -83,19 +84,43 @@ object MusicVideo {
         val results = YouTube.search("${song.title} $artist", YouTube.SearchFilter.FILTER_VIDEO)
             .getOrNull()?.items.orEmpty()
             .filterIsInstance<SongItem>()
-        return results.take(8).firstOrNull { video ->
+        val artistNames = song.artists.map { normalize(it.name) }.filter { it.isNotBlank() }
+        // Every match is scored rather than the first one taken: search put fan-made lyric videos
+        // above the artist's own video often enough that the player showed someone's slideshow
+        // over a song that has a real video.
+        val best = results.take(10).mapNotNull { video ->
+            if (video.id == song.id) return@mapNotNull null
+            val raw = video.title.lowercase()
+            if (EDITS.any { it.containsMatchIn(raw) } && EDITS.none { it.containsMatchIn(song.title.lowercase()) }) return@mapNotNull null
             val title = normalize(video.title)
-            val titleMatches = title == wanted || title.startsWith("$wanted ") || title.contains(" $wanted") ||
-                title.contains(wanted)
-            val artistMatches = song.artists.any { a ->
-                val name = normalize(a.name)
-                name.isNotBlank() && (video.artists.any { normalize(it.name).contains(name) } || title.contains(name))
+            if (!title.contains(wanted)) return@mapNotNull null
+            val channels = video.artists.map { normalize(it.name).replace(" ", "") }
+            // The artist's own channel (or their VEVO), not an uploader who put the name in the title.
+            val ownChannel = artistNames.any { name ->
+                val compact = name.replace(" ", "")
+                channels.any { it == compact || it == "${compact}vevo" || it == "${compact}official" }
             }
-            val durationOk = video.duration == null || song.duration <= 0 ||
-                abs(video.duration!! - song.duration) <= MAX_DURATION_DRIFT_S
-            titleMatches && artistMatches && durationOk && video.id != song.id
-        }?.id ?: song.id.takeIf { results.any { it.id == song.id } }
+            val named = artistNames.any { name -> channels.any { it.contains(name.replace(" ", "")) } || title.contains(name) }
+            if (!ownChannel && !named) return@mapNotNull null
+            val drift = if (video.duration == null || song.duration <= 0) 0 else abs(video.duration!! - song.duration)
+            if (drift > MAX_DURATION_DRIFT_S) return@mapNotNull null
+            var score = 0
+            if (ownChannel) score += 100
+            if ("official" in raw && ("video" in raw || "mv" in raw)) score += 40
+            if ("lyric" in raw || "visualizer" in raw || "audio" in raw) score -= 30
+            score -= drift / 3
+            video.id to score
+        }.maxByOrNull { it.second }
+        return best?.first ?: song.id.takeIf { results.any { it.id == song.id } }
     }
+
+    /** Versions of a song that are not its video: they run at another speed, or are someone else. */
+    private val EDITS = listOf(
+        "sped up", "speed up", "slowed", "reverb", "nightcore", "8d", "karaoke", "instrumental",
+        "cover", "reaction", "1 hour", "10 hours", "loop", "live at", "live from", "(live", "[live",
+        "remix", "mashup", "tutorial", "dance practice", "fanmade", "fan made", "zumba", "workout",
+        "choreography", "dance cover", "dance fitness", "piano", "guitar",
+    ).map { Regex("""(^|[^\p{L}])${Regex.escape(it)}($|[^\p{L}])""") }
 
     /** Lowercase, no accents, and none of the "(Official Video)" or "[Remastered]" decorations. */
     private fun normalize(text: String): String {

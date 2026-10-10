@@ -22,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -91,6 +93,7 @@ internal fun MusicVideoSurface(
                 }
 
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    android.util.Log.w("MusicVideo", "video failed: ${error.errorCodeName} ${stream.width}x${stream.height} len=${stream.contentLength}", error)
                     failed()
                 }
             })
@@ -127,15 +130,25 @@ internal fun MusicVideoSurface(
     val aspect = if (stream.width > 0 && stream.height > 0) stream.width.toFloat() / stream.height else 16f / 9f
     androidx.compose.foundation.layout.BoxWithConstraints(modifier, contentAlignment = alignment) {
         val heightLimited = fitInside && maxHeight.value > 0f && maxWidth / maxHeight > aspect
+        // Inline, a picture taller than the room under the top strip used to be centred by its
+        // parent and so slid up underneath the strip, its buttons and "Playing from" over the
+        // picture. It still fills the width, but is now cropped evenly inside that room.
+        val crop = !fitInside && maxHeight.value > 0f && maxHeight != androidx.compose.ui.unit.Dp.Infinity &&
+            maxWidth / aspect > maxHeight
+        val fullWidth = maxWidth
         val reportBottom by rememberUpdatedState(onPictureBottom)
         androidx.compose.foundation.layout.Box(
             (
-                if (heightLimited) {
-                    androidx.compose.ui.Modifier.fillMaxHeight().aspectRatio(aspect, matchHeightConstraintsFirst = true)
-                } else {
-                    androidx.compose.ui.Modifier.fillMaxWidth().aspectRatio(aspect)
+                when {
+                    heightLimited ->
+                        androidx.compose.ui.Modifier.fillMaxHeight().aspectRatio(aspect, matchHeightConstraintsFirst = true)
+                    crop ->
+                        androidx.compose.ui.Modifier.fillMaxWidth().fillMaxHeight()
+                            .then(androidx.compose.ui.Modifier.clipToBounds())
+                    else -> androidx.compose.ui.Modifier.fillMaxWidth().aspectRatio(aspect)
                 }
                 ).onGloballyPositioned { reportBottom(it.positionInRoot().y + it.size.height) },
+            contentAlignment = androidx.compose.ui.Alignment.Center,
         ) {
             AndroidView(
                 factory = { viewContext ->
@@ -143,8 +156,13 @@ internal fun MusicVideoSurface(
                 },
                 update = { player.setVideoTextureView(it) },
                 onRelease = { player.clearVideoTextureView(it) },
-                modifier = androidx.compose.ui.Modifier
-                    .matchParentSize()
+                modifier = (
+                    if (crop) {
+                        androidx.compose.ui.Modifier.requiredSize(fullWidth, fullWidth / aspect)
+                    } else {
+                        androidx.compose.ui.Modifier.matchParentSize()
+                    }
+                    )
                     .graphicsLayer { this.alpha = alpha },
             )
             if (rendered) overlay()

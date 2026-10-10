@@ -518,7 +518,9 @@ internal class CrossfadeAudio(
         positionMs: Long,
     ) {
         stopOverlapCrossfade(resetMainFade = false)
-        val rate = plan.incomingPlaybackRate.takeIf { it.isFinite() && it in 0.85..1.15 } ?: 1.0
+        // Within the range a DJ would pitch a record: beyond about 6% a song is audibly running fast,
+        // and a blend can last half a minute.
+        val rate = plan.incomingPlaybackRate.takeIf { it.isFinite() && it in 0.94..1.06 } ?: 1.0
         // Armed late — the plan's start already passed — the arriving song comes in later by the
         // same amount, so the two still line up where the plan meant them to.
         val late = (positionMs - startMs).coerceAtLeast(0L)
