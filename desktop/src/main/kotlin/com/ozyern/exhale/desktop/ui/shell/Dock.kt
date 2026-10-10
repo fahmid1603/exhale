@@ -144,6 +144,7 @@ import com.ozyern.exhale.desktop.player.PlayerState
 import com.ozyern.exhale.desktop.ui.AppShortcuts
 import com.ozyern.exhale.desktop.ui.LoadingRing
 import com.ozyern.exhale.desktop.ui.Motion
+import com.ozyern.exhale.desktop.ui.DockIcons
 import com.ozyern.exhale.desktop.ui.NavIcons
 import com.ozyern.exhale.desktop.ui.PressableIcon
 import com.ozyern.exhale.desktop.ui.TransportIcons
@@ -156,7 +157,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-data class DockTab(val label: String, val icon: ImageVector)
+/** A dock tab: its glyph at rest, and the heavier one it takes on under the lens. */
+data class DockTab(val label: String, val icon: ImageVector, val selectedIcon: ImageVector = icon)
 
 val DockHeight = 64.dp
 
@@ -245,7 +247,7 @@ fun LiquidDock(
                         },
                 )
                 FrostedCircle(onClick = onSearch) {
-                    Icon(NavIcons.Search, contentDescription = "Search", tint = if (searchSelected) accent else rest, modifier = Modifier.size(24.dp))
+                    Icon(if (searchSelected) DockIcons.SearchSelected else DockIcons.Search, contentDescription = "Search", tint = if (searchSelected) accent else rest, modifier = Modifier.size(24.dp))
                 }
             }
         } else {
@@ -264,7 +266,7 @@ fun LiquidDock(
                         scaleY = grow
                     },
                 ) {
-                    Icon(tabs.first().icon, contentDescription = tabs.first().label, tint = if (selected == 0) accent else rest, modifier = Modifier.size(24.dp))
+                    Icon(if (selected == 0) tabs.first().selectedIcon else tabs.first().icon, contentDescription = tabs.first().label, tint = if (selected == 0) accent else rest, modifier = Modifier.size(24.dp))
                 }
                 FrostedPill(
                     modifier = Modifier
@@ -283,14 +285,14 @@ fun LiquidDock(
                         MiniPlayerContent(state, player, compact = true)
                     } else if (selected >= 0) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(tabs[selected].icon, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
+                            Icon(tabs[selected].selectedIcon, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(tabs[selected].label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = accent)
                         }
                     }
                 }
                 FrostedCircle(onClick = onSearch) {
-                    Icon(NavIcons.Search, contentDescription = "Search", tint = if (searchSelected) accent else rest, modifier = Modifier.size(24.dp))
+                    Icon(if (searchSelected) DockIcons.SearchSelected else DockIcons.Search, contentDescription = "Search", tint = if (searchSelected) accent else rest, modifier = Modifier.size(24.dp))
                 }
             }
         }
@@ -726,7 +728,7 @@ private fun DockSearchField(
             .padding(start = (height - 20.dp) / 2, end = lerp(0.dp, 12.dp, open)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(NavIcons.Search, contentDescription = "Search", tint = if (focused || selected) accent else MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
+        Icon(if (focused || selected) DockIcons.SearchSelected else DockIcons.Search, contentDescription = "Search", tint = if (focused || selected) accent else MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
         Box(Modifier.weight(1f).padding(start = 10.dp).graphicsLayer { alpha = open }, contentAlignment = Alignment.CenterStart) {
             if (query.isEmpty()) {
                 Text("Search", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
@@ -1092,7 +1094,7 @@ private fun RowScope.TabItem(
     // glyph and its label thicken and grow a touch, the way a chosen tab does on a glass bar.
     if (horizontal) {
         Row(base, horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            Icon(tab.icon, contentDescription = tab.label, tint = tint, modifier = Modifier.size(if (filled) 24.dp else 22.dp))
+            Icon(if (filled) tab.selectedIcon else tab.icon, contentDescription = tab.label, tint = tint, modifier = Modifier.size(if (filled) 24.dp else 22.dp))
             Box(Modifier.collapseWidth(labelFraction)) {
                 Text(
                     tab.label,
@@ -1108,7 +1110,7 @@ private fun RowScope.TabItem(
         }
     } else {
         Column(base, verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(tab.icon, contentDescription = tab.label, tint = tint, modifier = Modifier.size(if (filled) 26.dp else 24.dp))
+            Icon(if (filled) tab.selectedIcon else tab.icon, contentDescription = tab.label, tint = tint, modifier = Modifier.size(if (filled) 26.dp else 24.dp))
             Text(
                 tab.label,
                 color = tint,

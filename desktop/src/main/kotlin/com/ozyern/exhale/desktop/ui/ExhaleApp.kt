@@ -410,7 +410,7 @@ fun ExhaleApp(player: DesktopPlayer) {
         closePlayer = { playerOpen = false },
     )
 
-    val tabs = remember { listOf(DockTab("Home", NavIcons.Home), DockTab("Mood & Genres", NavIcons.New), DockTab("Library", NavIcons.Library)) }
+    val tabs = remember { listOf(DockTab("Home", DockIcons.Home, DockIcons.HomeSelected), DockTab("Mood & Genres", DockIcons.Explore, DockIcons.ExploreSelected), DockTab("Library", DockIcons.Library, DockIcons.LibrarySelected)) }
 
     // The title bar's back button: close the player first, then pages.
     SideEffect {

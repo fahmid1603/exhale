@@ -86,6 +86,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.ozyern.exhale.desktop.data.DesktopPrefs
+import com.ozyern.exhale.desktop.data.LyricSearch
+import com.ozyern.exhale.desktop.data.MusicLinks
 import com.ozyern.exhale.desktop.player.DesktopPlayer
 import com.ozyern.exhale.desktop.ui.typingField
 import com.ozyern.exhale.desktop.player.PlayerState
@@ -113,11 +115,13 @@ import com.ozyern.exhale.innertube.models.SongItem
 import com.ozyern.exhale.innertube.models.YTItem
 import com.ozyern.exhale.innertube.models.filterExplicit
 import com.ozyern.exhale.innertube.models.filterVideo
+import com.ozyern.exhale.innertube.pages.SearchSummary
 import com.ozyern.exhale.innertube.pages.SearchSummaryPage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -213,7 +217,36 @@ class SearchModel(private val scope: CoroutineScope) {
         }
         searching = true
         searchJob = scope.launch {
-            if (filter == null) {
+            if (filter == null && MusicLinks.isLink(q)) {
+                // A Spotify, Apple Music, Deezer, Tidal, SoundCloud or YouTube link: the same song or
+                // album here as the top result, and the ordinary results for it underneath — searching
+                // the raw address found only pages about the address.
+                val found = MusicLinks.resolve(q)
+                if (found == null) {
+                    error = "Couldn't find the music in that link here."
+                } else {
+                    val by = when (found) {
+                        is SongItem -> found.artists.joinToString(" ") { it.name }
+                        is AlbumItem -> found.artists?.joinToString(" ") { it.name }.orEmpty()
+                        else -> ""
+                    }
+                    val more = withContext(Dispatchers.IO) { YouTube.searchSummary("${found.title} $by".trim()) }.getOrNull()
+                    val page = SearchSummaryPage(
+                        listOf(SearchSummary("Top result", listOf(found))) +
+                            more?.summaries.orEmpty().filterNot { it.title.contains("top", ignoreCase = true) },
+                    )
+                    val cleaned = page.filterExplicit(DesktopPrefs.hideExplicit).filterVideo(DesktopPrefs.hideVideos)
+                    summaries[key] = cleaned
+                    summary = cleaned
+                }
+            } else if (filter == null) {
+                // A line of a song — "his palms are sweaty" — is asked of Genius alongside YouTube, whose
+                // own search reads titles and so turns up nothing much for it.
+                val fromLyrics: kotlinx.coroutines.Deferred<List<LyricSearch.Match>>? = if (LyricSearch.looksLikeLyrics(q)) {
+                    async { runCatching { LyricSearch.search(q) }.getOrDefault(emptyList()) }
+                } else {
+                    null
+                }
                 withContext(Dispatchers.IO) { YouTube.searchSummary(q) }
                     .onSuccess { page ->
                         val cleaned = page.filterExplicit(DesktopPrefs.hideExplicit).filterVideo(DesktopPrefs.hideVideos)
@@ -221,6 +254,14 @@ class SearchModel(private val scope: CoroutineScope) {
                         summary = cleaned
                     }
                     .onFailure { if (it is CancellationException) throw it else error = it.message ?: "Search failed" }
+                searching = false
+                val matches = fromLyrics?.await().orEmpty()
+                if (matches.isNotEmpty() && searchedQuery == q && tab == SearchTab.All) {
+                    val merged = withLyricMatches(summary, matches.map { it.song })
+                    summaries[key] = merged
+                    summary = merged
+                    error = null
+                }
             } else {
                 withContext(Dispatchers.IO) { YouTube.search(q, filter) }
                     .onSuccess { result ->
@@ -232,6 +273,23 @@ class SearchModel(private val scope: CoroutineScope) {
             }
             searching = false
         }
+    }
+
+    /**
+     * The song the line came from takes the top spot, unless YouTube's top result already is one of
+     * them; the other matches sit in their own shelf, first, so they are seen before the rest.
+     */
+    private fun withLyricMatches(page: SearchSummaryPage?, songs: List<SongItem>): SearchSummaryPage {
+        val summaries = page?.summaries.orEmpty()
+        val top = summaries.firstOrNull { it.title.contains("top", ignoreCase = true) }
+        val topIsMatch = top?.items?.firstOrNull()?.id in songs.map { it.id }
+        val lead = if (topIsMatch) top!! else SearchSummary("Top result", listOf(songs.first()))
+        val others = songs.filterNot { it.id == lead.items.firstOrNull()?.id }
+        return SearchSummaryPage(
+            listOf(lead) +
+                (if (others.isNotEmpty()) listOf(SearchSummary("From the lyrics", others)) else emptyList()) +
+                summaries.filterNot { it === top },
+        )
     }
 
     fun clear() {

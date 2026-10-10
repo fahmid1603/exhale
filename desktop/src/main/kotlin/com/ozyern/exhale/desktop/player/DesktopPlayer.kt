@@ -190,14 +190,15 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
 
     init {
         scope.launch { AppSettings.state.collect { applyEngineSettings(it) } }
-        // Whether there's a video of whatever is playing — asked for the song itself, so it's known
-        // for a song restored from last time as well as one just started.
+        // Whether there's a video of whatever is playing — the song itself, or the music video made
+        // for it when the song is an album track — so it's known for a song restored from last time
+        // as well as one just started.
         scope.launch {
-            state.map { it.current?.id }.distinctUntilChanged().collect { id ->
+            state.map { it.current }.distinctUntilChanged { a, b -> a?.id == b?.id }.collect { song ->
                 _videoAvailable.value = false
-                if (id == null) return@collect
-                val answer = runCatching { StreamResolver.hasVideo(id) }.getOrDefault(false)
-                if (_state.value.current?.id == id) _videoAvailable.value = answer
+                if (song == null) return@collect
+                val answer = runCatching { MusicVideoMatch.videoIdFor(song) != null }.getOrDefault(false)
+                if (_state.value.current?.id == song.id) _videoAvailable.value = answer
             }
         }
         // Whatever lossless music is already on this PC, ready before the first song plays.
@@ -352,7 +353,16 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
             // Watching rather than listening: the picture and its own sound track, into the surface.
             if (_videoMode.value && videoSurface != null) {
                 _videoAvailable.value = true
-                StreamResolver.resolveVideo(song.id)
+                // An album track has no picture of its own: the music video's picture is shown, and
+                // the sound stays the song's — the video's own track can carry skits, a longer intro
+                // or a radio edit.
+                val videoId = runCatching { MusicVideoMatch.videoIdFor(song) }.getOrNull() ?: song.id
+                StreamResolver.resolveVideo(videoId)
+                    .map { video ->
+                        if (videoId == song.id) return@map video
+                        val sound = StreamResolver.resolve(song.id).getOrNull() ?: return@map video
+                        video.copy(audioUrl = sound.url, headers = video.headers.merge(sound.headers))
+                    }
                     .onSuccess { video ->
                         println("Exhale video: playing ${video.quality} from ${video.clientName}")
                         ensureActive()

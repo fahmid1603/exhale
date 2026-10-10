@@ -28,6 +28,122 @@ private fun holedIcon(name: String, pathData: String): ImageVector =
         .addPath(pathData = addPathNodes(pathData), fill = SolidColor(Color.Black), pathFillType = PathFillType.EvenOdd)
         .build()
 
+/** One piece of a dock glyph: a filled shape (with an alpha, for the record stack's depth) or a line. */
+private class Stroke(val pathData: String, val width: Float = 0f, val fillAlpha: Float = 1f, val evenOdd: Boolean = false)
+
+/**
+ * The Android dock's own drawables, line for line: each tab has a resting glyph drawn as a line and
+ * a selected one that is solid or heavier, so the tab under the lens changes weight, not just colour.
+ */
+private fun dockIcon(name: String, viewport: Float, vararg parts: Stroke, shiftX: Float = 0f, shiftY: Float = 0f): ImageVector {
+    val builder = ImageVector.Builder(name = name, defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = viewport, viewportHeight = viewport)
+        .addGroup(translationX = shiftX, translationY = shiftY)
+    for (part in parts) {
+        val nodes = addPathNodes(part.pathData)
+        if (part.width > 0f) {
+            builder.addPath(
+                pathData = nodes,
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = part.width,
+                strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round,
+                strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round,
+            )
+        } else {
+            builder.addPath(
+                pathData = nodes,
+                fill = SolidColor(Color.Black),
+                fillAlpha = part.fillAlpha,
+                pathFillType = if (part.evenOdd) PathFillType.EvenOdd else PathFillType.NonZero,
+            )
+        }
+    }
+    return builder.clearGroup().build()
+}
+
+private const val HOUSE = "M4.4,10.9 L12,4.1 L19.6,10.9 V18.1 A2.4,2.4 0 0 1 17.2,20.5 H6.8 A2.4,2.4 0 0 1 4.4,18.1 Z"
+private const val HOUSE_WITH_DOOR = "$HOUSE M9.4,20.5 V15.4 A1.3,1.3 0 0 1 10.7,14.1 H13.3 A1.3,1.3 0 0 1 14.6,15.4 V20.5 Z"
+private const val STACK_BACK = "M37.3076,2.402C37.2092,0.8448 36.3236,0 34.6671,0L19.9721,0C18.3156,0 17.43,0.8448 17.3316,2.402L37.3076,2.402Z"
+private const val STACK_MIDDLE = "M40.7846,8.0341C40.5386,6.3942 39.7349,5.4334 37.9473,5.4334L16.5443,5.4334C14.7566,5.4334 13.953,6.3942 13.707,8.0341L40.7846,8.0341Z"
+private const val NOTE =
+    "M20.2673,41.9763C18.4304,41.9763 17.1348,40.7671 17.1348,39.0609C17.1348,37.3215 18.2172,36.1951 20.3657,35.7644L22.055,35.4165" +
+        "C22.465,35.3337 22.6618,35.0686 22.6618,34.5717L22.6126,22.2637C22.6126,21.6011 23.039,21.187 23.777,21.0213L33.9947,18.8844" +
+        "C35.2411,18.6193 35.766,18.9838 35.766,20.0605L35.766,35.2508C35.766,38.4645 33.3387,39.5909 31.7642,39.5909" +
+        "C29.9109,39.5909 28.566,38.3651 28.566,36.6755C28.566,34.9858 29.6649,33.9422 31.8626,33.4452L33.4699,33.0974" +
+        "C33.9455,32.998 34.1915,32.6667 34.1915,32.1863L34.1423,25.3283C34.1423,24.9141 33.9455,24.8147 33.4535,24.9141L24.8103,26.7197" +
+        "C24.3675,26.8191 24.3183,26.8854 24.3183,27.3824L24.3183,37.5865C24.3183,40.7671 21.8418,41.9763 20.2673,41.9763Z"
+private const val WAVES_NEAR_L = "M7.86,8.53 A5.4,5.4 0 0 0 7.86,15.47"
+private const val WAVES_NEAR_R = "M16.14,8.53 A5.4,5.4 0 0 1 16.14,15.47"
+private const val WAVES_FAR_L = "M4.8,5.96 A9.4,9.4 0 0 0 4.8,18.04"
+private const val WAVES_FAR_R = "M19.2,5.96 A9.4,9.4 0 0 1 19.2,18.04"
+
+object DockIcons {
+    val Home by lazy {
+        dockIcon(
+            "Exhale.Dock.Home", 24f,
+            Stroke(HOUSE, 1.9f),
+            Stroke("M9.7,20.5 V15.6 A1.3,1.3 0 0 1 11,14.3 H13 A1.3,1.3 0 0 1 14.3,15.6 V20.5", 1.9f),
+        )
+    }
+    val HomeSelected by lazy {
+        dockIcon(
+            "Exhale.Dock.HomeSelected", 24f,
+            Stroke(HOUSE_WITH_DOOR, evenOdd = true),
+            Stroke(HOUSE_WITH_DOOR, 1.3f),
+        )
+    }
+    val Explore by lazy {
+        dockIcon(
+            "Exhale.Dock.Explore", 24f,
+            Stroke("M10.1,12a1.9,1.9 0 1,0 3.8,0a1.9,1.9 0 1,0 -3.8,0z"),
+            Stroke(WAVES_NEAR_L, 1.9f), Stroke(WAVES_NEAR_R, 1.9f), Stroke(WAVES_FAR_L, 1.9f), Stroke(WAVES_FAR_R, 1.9f),
+        )
+    }
+    val ExploreSelected by lazy {
+        dockIcon(
+            "Exhale.Dock.ExploreSelected", 24f,
+            Stroke("M9.4,12a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0z"),
+            Stroke(WAVES_NEAR_L, 2.6f), Stroke(WAVES_NEAR_R, 2.6f), Stroke(WAVES_FAR_L, 2.6f), Stroke(WAVES_FAR_R, 2.6f),
+        )
+    }
+    val Library by lazy {
+        dockIcon(
+            "Exhale.Dock.Library", 56f,
+            Stroke(STACK_BACK, fillAlpha = 0.45f),
+            Stroke(STACK_MIDDLE, fillAlpha = 0.72f),
+            Stroke("M15.4,13.1 L39.6,13.1 A5,5 0 0 1 44.6,18.1 L44.6,42.5 A5,5 0 0 1 39.6,47.5 L15.4,47.5 A5,5 0 0 1 10.4,42.5 L10.4,18.1 A5,5 0 0 1 15.4,13.1 Z", 3f),
+            Stroke(NOTE),
+            shiftX = 0.5f, shiftY = 3.5f,
+        )
+    }
+    val LibrarySelected by lazy {
+        dockIcon(
+            "Exhale.Dock.LibrarySelected", 56f,
+            Stroke(STACK_BACK, fillAlpha = 0.45f),
+            Stroke(STACK_MIDDLE, fillAlpha = 0.72f),
+            Stroke(
+                "M40.1121,49C43.8515,49 46,46.83 46,42.6058L46,18.0064C46,13.7989 43.8351,11.6288 39.6037,11.6288L15.3799,11.6288" +
+                    "C11.1485,11.6288 9,13.7657 9,18.0064L9,42.6058C9,46.8465 11.1485,49 15.3799,49L40.1121,49Z$NOTE",
+                evenOdd = true,
+            ),
+            shiftX = 0.5f, shiftY = 3.5f,
+        )
+    }
+    val Search by lazy {
+        dockIcon(
+            "Exhale.Dock.Search", 24f,
+            Stroke("M10.6,4.4 A6.2,6.2 0 1 1 10.6,16.8 A6.2,6.2 0 1 1 10.6,4.4 Z", 2.1f),
+            Stroke("M15.4,15.4 L20,20", 2.3f),
+        )
+    }
+    val SearchSelected by lazy {
+        dockIcon(
+            "Exhale.Dock.SearchSelected", 24f,
+            Stroke("M10.6,4.2 A6.4,6.4 0 1 1 10.6,17 A6.4,6.4 0 1 1 10.6,4.2 Z", 2.9f),
+            Stroke("M15.6,15.6 L20.2,20.2", 3.1f),
+        )
+    }
+}
+
 object TransportIcons {
     val Repeat by lazy { materialIcon("Exhale.Repeat", "M7,7h10v3l4,-4 -4,-4v3H5v6h2V7zM17,17H7v-3l-4,4 4,4v-3h12v-6h-2v4z") }
     val RepeatOne by lazy { materialIcon("Exhale.RepeatOne", "M7,7h10v3l4,-4 -4,-4v3H5v6h2V7zM17,17H7v-3l-4,4 4,4v-3h12v-6h-2v4zM13,15V9h-1l-2,1v1h1.5v4H13z") }
