@@ -24,6 +24,13 @@ import { useHeroScroll, useOnScreen, useReveals, prefersReducedMotion } from './
 import { Link } from './router.jsx'
 import { LATEST_RELEASE } from './releases.js'
 
+/** Screens from the 1.0.405 build, taken on a phone. */
+const SHOT_405 = {
+  artist: { src: '/shots/405-artist.jpg', alt: 'Sabrina Carpenter’s artist page: her portrait full bleed, Play between follow and shuffle, the latest album, then Top songs.' },
+  settings: { src: '/shots/405-settings.jpg', alt: 'Settings: the Exhale card, then Essentials and Integrations as grouped glass tables with a coloured glyph on every row.' },
+  about: { src: '/shots/405-about.jpg', alt: 'About: the Exhale 1.0.405 card over gold light, saying Exhale is up to date, above the maintainer and Connect.' },
+}
+
 const SECTIONS = [
   { id: 'overview', label: 'Overview' },
   { id: 'highlights', label: 'Highlights' },
@@ -63,9 +70,9 @@ const HIGHLIGHTS = [
   { shot: { src: '/shots/player-color.jpg', alt: 'The player tinted from the cover: Bad for Business, the controls in its warm brown.' }, lead: 'The song brings its own color.', rest: 'The cover fills the player, and the controls take their tint from it.' },
   { shot: SHOTS_304[SHOT304.lyrics], lead: 'Lyrics land on the word.', rest: 'The line being sung lights up as it is sung, and the rest fall out of focus.' },
   { shot: { src: '/shots/downloaded.jpg', alt: 'Downloaded: three songs saved to the phone, ready with no network.' }, lead: 'It plays with the radio off.', rest: 'Downloads play with no network at all, cover edge to edge.' },
-  { shot: SHOTS[SHOT.artist], lead: 'Artists, the way they should look.', rest: 'Portrait, story and the songs that matter, on one page.' },
-  { shot: SHOTS_304[SHOT304.settings], lead: 'One material, everywhere.', rest: 'Grouped glass tables all the way down to Settings.' },
-  { shot: SHOTS_304[SHOT304.about], lead: 'It updates itself.', rest: 'Check, download and install without leaving the app.' },
+  { shot: SHOT_405.artist, lead: 'Artists, the way they should look.', rest: 'Portrait, story and the songs that matter, on one page.' },
+  { shot: SHOT_405.settings, lead: 'One material, everywhere.', rest: 'Grouped glass tables all the way down to Settings.' },
+  { shot: SHOT_405.about, lead: 'It updates itself.', rest: 'Check, download and install without leaving the app.' },
 ]
 
 /** How long each highlight holds before the rail moves on by itself. */
@@ -295,6 +302,8 @@ function LyricsPanel({ running }) {
  * phone lying on it.
  */
 function ShotTile({ kicker, title, body, shot, crop = 'top', delay = 0 }) {
+  // An index into the 1.0.304 set, or a shot of its own.
+  const pic = typeof shot === 'number' ? SHOTS_304[shot] : shot
   return (
     <article className="ft reveal" style={{ '--d': `${delay}ms` }}>
       <div className="ft-copy">
@@ -304,8 +313,8 @@ function ShotTile({ kicker, title, body, shot, crop = 'top', delay = 0 }) {
       </div>
       <div className="ft-shot" data-crop={crop}>
         <img
-          src={SHOTS_304[shot].src}
-          alt={SHOTS_304[shot].alt}
+          src={pic.src}
+          alt={pic.alt}
           width="720"
           height="1280"
           loading="lazy"
@@ -379,7 +388,7 @@ function Design() {
           kicker="Settings"
           title="One material, everywhere."
           body="Grouped glass tables, hairlines inset to the label, and a coloured glyph on every row."
-          shot={SHOT304.settings}
+          shot={SHOT_405.settings}
           delay={90}
         />
       </div>
