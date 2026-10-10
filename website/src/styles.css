@@ -4896,3 +4896,246 @@ html:has(.release) {
     max-height: 42vh;
   }
 }
+
+/* ==================================================== home, ColorOS-style */
+
+/* The chapter row: the name on the left, the chapters across, the one being
+   read set heavier with a rule under it — ColorOS 17's page, on black. Sticks
+   once the announce strip and the top bar have scrolled away. */
+.home-chapters {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  height: var(--seg-h, 52px);
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: saturate(180%) blur(22px);
+  -webkit-backdrop-filter: saturate(180%) blur(22px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.home-chapters-row {
+  width: min(1240px, 100% - 40px);
+  height: 100%;
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(14px, 2.4vw, 34px);
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+}
+
+.home-chapters-row::-webkit-scrollbar { display: none; }
+
+.home-chapters-name {
+  margin-right: auto;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.home-chapters-row a {
+  position: relative;
+  padding-block: 6px;
+  font-size: 13px;
+  color: rgba(245, 245, 247, 0.72);
+  text-decoration: none;
+  transition: color 0.25s ease;
+}
+
+.home-chapters-row a:hover { color: var(--ink); }
+
+.home-chapters-row a[data-on='true'] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.home-chapters-row a[data-on='true']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--ink);
+}
+
+@media (max-width: 760px) {
+  .home-chapters-row { justify-content: flex-start; }
+}
+
+/* The highlight controls as ColorOS draws them: a dark capsule of small dots
+   whose active one is a long bar filling while it holds, and two large round
+   arrows beside it. */
+.hl-controls {
+  justify-content: center;
+  gap: 14px;
+}
+
+.hl-dots {
+  height: 64px;
+  padding: 0 26px;
+  gap: 14px;
+  background: rgba(30, 31, 34, 0.86);
+}
+
+.hl-dot {
+  position: relative;
+  overflow: hidden;
+  width: 10px;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.22);
+  transition: width 0.5s cubic-bezier(0.2, 0.9, 0.3, 1), background 0.3s ease;
+}
+
+.hl-dot[data-on='true'] {
+  width: 90px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.hl-dot-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--ink);
+  transform-origin: left center;
+  transform: scaleX(1);
+}
+
+.hl-dot[data-auto='true'] .hl-dot-fill {
+  animation: hl-fill var(--hl-hold, 5200ms) linear both;
+}
+
+@keyframes hl-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+.hl-arrows {
+  position: static;
+  gap: 14px;
+}
+
+.hl-arrow {
+  width: 64px;
+  height: 64px;
+  background: rgba(30, 31, 34, 0.86);
+}
+
+.hl-arrow svg {
+  width: 24px;
+  height: 24px;
+}
+
+@media (max-width: 734px) {
+  .hl-arrows { display: none; }
+}
+
+/* "Ultra fluid": the film in a framed card that grows to the full window as
+   the page scrolls, ColorOS's "smooth to the touch". --film runs 0 → 1. */
+.film {
+  --film: 0;
+  position: relative;
+  height: 230vh;
+  margin-top: clamp(80px, 12vh, 140px);
+}
+
+.film-stick {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.film-head {
+  text-align: center;
+  padding-inline: 20px;
+  margin-bottom: calc(36px * (1 - var(--film)));
+  opacity: calc(1 - var(--film) * 1.6);
+  transform: translate3d(0, calc(var(--film) * -60px), 0);
+  height: calc(150px * (1 - var(--film)));
+  overflow: visible;
+}
+
+.film-kicker {
+  margin: 0 0 10px;
+  font-size: clamp(15px, 1.4vw, 19px);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.film-title {
+  margin: 0;
+  font-size: clamp(34px, 5.2vw, 72px);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.film-grad {
+  background: linear-gradient(100deg, var(--iris), #6fd6ff 30%, var(--rose) 62%, var(--ember));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.film-frame {
+  position: relative;
+  width: calc(min(1100px, 76vw) + (100vw - min(1100px, 76vw)) * var(--film));
+  height: calc(min(1100px, 76vw) * 0.5625 + (100vh - min(1100px, 76vw) * 0.5625) * var(--film));
+  border-radius: calc(34px * (1 - var(--film)));
+  overflow: hidden;
+  background: #0b0b0d;
+  box-shadow: 0 40px 120px -40px rgba(123, 108, 255, calc(0.5 * (1 - var(--film))));
+}
+
+.film-frame video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.film-watch {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px 0 16px;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  transition: background 0.2s ease, transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.film-watch:hover { background: rgba(255, 255, 255, 0.24); }
+.film-watch:active { transform: translateX(-50%) scale(0.96); }
+
+.film-watch svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .film { height: auto; }
+  .film-stick { position: static; height: auto; padding-block: 40px; }
+}

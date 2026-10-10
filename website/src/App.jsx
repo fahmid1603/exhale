@@ -6,7 +6,6 @@ import Features from './components/Features.jsx'
 import Words from './components/Words.jsx'
 import Phone from './components/Phone.jsx'
 import Ribbon from './components/Ribbon.jsx'
-import Segments from './components/Segments.jsx'
 import {
   ABOUT_FACTS,
   FEATURES,
@@ -27,6 +26,7 @@ import { Link } from './router.jsx'
 const SECTIONS = [
   { id: 'overview', label: 'Overview' },
   { id: 'highlights', label: 'Highlights' },
+  { id: 'film', label: 'Ultra fluid' },
   { id: 'lyrics', label: 'Lyrics' },
   { id: 'design', label: 'Design' },
   { id: 'features', label: 'Features' },
@@ -38,14 +38,28 @@ const SECTIONS = [
 function Bars({ active, onSelect }) {
   return (
     <>
-      {/* Three tiers, narrowing as they go: the release strip is news, the
-          topbar is the project, and the segmented control is this page. */}
+      {/* The release strip is news and the topbar is the project; the third
+          tier is this page's chapters, as ColorOS's page lays them out: the
+          name on the left, the chapters in a row, the one being read set
+          heavier. It sticks to the top once the other two have scrolled away. */}
       <AnnounceBar />
       <TopBar />
 
-      <div className="segbar">
-        <Segments items={SECTIONS} active={active} onSelect={onSelect} />
-      </div>
+      <nav className="home-chapters" aria-label="On this page">
+        <div className="home-chapters-row">
+          <span className="home-chapters-name">Exhale</span>
+          {SECTIONS.map((s, i) => (
+            <a
+              key={s.id}
+              href={`#${s.id}`}
+              data-on={active === i}
+              onClick={() => onSelect(i)}
+            >
+              {s.label}
+            </a>
+          ))}
+        </div>
+      </nav>
     </>
   )
 }
@@ -180,9 +194,24 @@ const HIGHLIGHTS = [
   { shot: SHOTS_304[SHOT304.about], lead: 'It updates itself.', rest: 'Check, download and install without leaving the app.' },
 ]
 
+/** How long each highlight holds before the rail moves on by itself. */
+const HL_HOLD_MS = 5200
+
 function Highlights() {
   const rail = useRef(null)
+  const section = useRef(null)
   const [at, setAt] = useState(0)
+  // Moves on by itself, as ColorOS's does, while it is on screen — and stops for
+  // good the moment anyone takes over with a swipe, a dot or an arrow.
+  const [auto, setAuto] = useState(!prefersReducedMotion())
+  const live = useOnScreen(section, '0px')
+
+  useEffect(() => {
+    if (!auto || !live) return undefined
+    const id = window.setTimeout(() => goTo(at >= HIGHLIGHTS.length - 1 ? 0 : at + 1, true), HL_HOLD_MS)
+    return () => window.clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auto, live, at])
 
   useEffect(() => {
     const node = rail.current
@@ -197,7 +226,8 @@ function Highlights() {
     return () => node.removeEventListener('scroll', onScroll)
   }, [])
 
-  const goTo = (index) => {
+  const goTo = (index, byItself = false) => {
+    if (!byItself) setAuto(false)
     const node = rail.current
     const card = node?.children[index]
     if (!node || !card) return
@@ -210,9 +240,9 @@ function Highlights() {
   }
 
   return (
-    <section className="hl" id="highlights">
+    <section className="hl" id="highlights" ref={section}>
       <h2 className="hl-title shell reveal">Get the highlights.</h2>
-      <div className="hl-rail" ref={rail}>
+      <div className="hl-rail" ref={rail} onPointerDown={() => setAuto(false)}>
         {HIGHLIGHTS.map((item, index) => (
           <article className="hl-card" key={item.lead}>
             <p className="hl-cap">
@@ -232,9 +262,14 @@ function Highlights() {
               type="button"
               className="hl-dot"
               data-on={index === at}
+              data-auto={auto && live}
+              style={{ '--hl-hold': `${HL_HOLD_MS}ms` }}
               aria-label={item.lead}
               onClick={() => goTo(index)}
-            />
+            >
+              {/* The active dot is a bar that fills while it holds, as ColorOS's does. */}
+              {index === at && <span className="hl-dot-fill" key={`${at}-${auto}`} />}
+            </button>
           ))}
         </div>
         <div className="hl-arrows">
@@ -249,6 +284,94 @@ function Highlights() {
             onClick={() => goTo(at + 1)}
           >
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6" /></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ------------------------------------------------------------------ film */
+
+/**
+ * "Ultra fluid." The 1.0.405 film, as ColorOS's "smooth to the touch" section
+ * shows its own: the title over a framed card, and as the page scrolls the
+ * card grows — wider, square-cornered — until the film fills the window and
+ * holds there a moment before the page moves on.
+ *
+ * Scroll-linked through one custom property written from a rAF-throttled
+ * handler, so scrolling never re-renders React. Plays muted while on screen.
+ */
+function Film({ running }) {
+  const section = useRef(null)
+  const video = useRef(null)
+  const live = useOnScreen(section, '0px')
+
+  useEffect(() => {
+    const node = section.current
+    if (!node) return undefined
+    const reduced = prefersReducedMotion()
+    let frame = 0
+    const apply = () => {
+      frame = 0
+      const rect = node.getBoundingClientRect()
+      const vh = window.innerHeight
+      // 0 while the section is arriving; 1 once it has been scrolled half its pinned travel.
+      const travel = Math.max(1, rect.height - vh)
+      const p = reduced ? 1 : Math.min(1, Math.max(0, -rect.top / (travel * 0.55)))
+      node.style.setProperty('--film', p.toFixed(4))
+    }
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(apply)
+    }
+    apply()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll)
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [])
+
+  useEffect(() => {
+    const v = video.current
+    if (!v) return
+    if (live && running) v.play().catch(() => {})
+    else v.pause()
+  }, [live, running])
+
+  const watch = () => {
+    const v = video.current
+    if (!v) return
+    v.currentTime = 0
+    v.play().catch(() => {})
+    v.requestFullscreen?.().catch(() => {})
+  }
+
+  return (
+    <section className="film" id="film" ref={section}>
+      <div className="film-stick">
+        <div className="film-head">
+          <p className="film-kicker">The system runs smoothly</p>
+          <h2 className="film-title">
+            Ultra fluid. <span className="film-grad">Knows your music.</span>
+          </h2>
+        </div>
+        <div className="film-frame">
+          <video
+            ref={video}
+            src="/media/film-405.mp4"
+            poster="/media/film-405-poster.jpg"
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            aria-label="Exhale 1.0.405: the player flying out of the dock, the dock folding as the page scrolls, lyrics lighting a word at a time, and horizontal lyrics."
+          />
+          <button type="button" className="film-watch" onClick={watch}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" /></svg>
+            Watch the film
           </button>
         </div>
       </div>
@@ -481,6 +604,8 @@ export default function App() {
         </section>
 
         <Highlights />
+
+        <Film running={ambient} />
 
         <div className="tour shell">
           <LyricsPanel running={ambient} />
