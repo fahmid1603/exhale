@@ -193,25 +193,35 @@ fun NavGraphBuilder.navigationBuilder(
                     type = NavType.StringType
                 },
             ),
+        // Results are pushed like any page — in from the right, back out to the right — rather
+        // than fading up in place over the search page.
         enterTransition = {
-            fadeIn(tween(250))
+            if (initialState.destination.route?.startsWith("search/") == true) {
+                fadeIn(tween(250))
+            } else {
+                slideInHorizontally(tween(420, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))) { it }
+            }
         },
         exitTransition = {
             if (targetState.destination.route?.startsWith("search/") == true) {
                 fadeOut(tween(200))
             } else {
-                fadeOut(tween(200)) + slideOutHorizontally { -it / 2 }
+                fadeOut(tween(210)) + slideOutHorizontally(tween(420)) { -it / 3 }
             }
         },
         popEnterTransition = {
             if (initialState.destination.route?.startsWith("search/") == true) {
                 fadeIn(tween(250))
             } else {
-                fadeIn(tween(250)) + slideInHorizontally { -it / 2 }
+                fadeIn(tween(210, delayMillis = 140)) + slideInHorizontally(tween(420)) { -it / 3 }
             }
         },
         popExitTransition = {
-            fadeOut(tween(200))
+            if (targetState.destination.route?.startsWith("search/") == true) {
+                fadeOut(tween(200))
+            } else {
+                slideOutHorizontally(tween(420, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))) { it }
+            }
         },
     ) {
         OnlineSearchResult(navController)

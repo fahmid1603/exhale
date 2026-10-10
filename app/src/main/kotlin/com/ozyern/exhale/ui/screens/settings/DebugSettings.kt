@@ -154,8 +154,8 @@ fun DebugSettings(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(rememberScrollState())
+                .padding(innerPadding),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             PreferenceGroupTitle(

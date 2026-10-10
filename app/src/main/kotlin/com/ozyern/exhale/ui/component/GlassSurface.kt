@@ -80,7 +80,7 @@ fun Modifier.liquidGlassSurface(
     // behind every screen, or a page's own wash), lensed at the rim, softened and saturated, with
     // the same film, sheen and rim drawn on the pane. Not inside a dialog's window — the recording
     // belongs to the activity's window and would land in the wrong place there.
-    val pageBackdrop = com.ozyern.exhale.ui.component.liquid.LocalPageBackdrop.current
+    val pageBackdrop = com.ozyern.exhale.ui.component.liquid.pageBackdropOrNull
     val inDialog = androidx.compose.ui.platform.LocalView.current.parent is androidx.compose.ui.window.DialogWindowProvider
     if (pageBackdrop != null && !inDialog) {
         return this

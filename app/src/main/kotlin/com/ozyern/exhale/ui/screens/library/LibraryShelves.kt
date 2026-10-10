@@ -322,6 +322,39 @@ internal fun NewPlaylistCard(onClick: () -> Unit) {
     }
 }
 
+/** "Import from Spotify", beside "New playlist": a Spotify playlist brought in by its link. */
+@Composable
+internal fun ImportSpotifyCard(onClick: () -> Unit) {
+    Column(
+        Modifier
+            .width(LibraryCardWidth)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick),
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(
+                    androidx.compose.ui.graphics.Brush.linearGradient(
+                        listOf(androidx.compose.ui.graphics.Color(0xFF1ED760), androidx.compose.ui.graphics.Color(0xFF0B7A3B)),
+                    ),
+                ),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.spotify_icon),
+                contentDescription = null,
+                tint = androidx.compose.ui.graphics.Color.White,
+                modifier = Modifier.size(40.dp),
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        CardCaption("Import from Spotify", "Paste a playlist link")
+    }
+}
+
 @Composable
 private fun CardCaption(title: String, subtitle: String) {
     Text(

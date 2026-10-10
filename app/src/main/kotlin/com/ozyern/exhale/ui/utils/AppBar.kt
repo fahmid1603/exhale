@@ -30,12 +30,19 @@ fun appBarScrollBehavior(
     canScroll: () -> Boolean = { true },
     snapAnimationSpec: AnimationSpec<Float>? = spring(stiffness = Spring.StiffnessMediumLow),
     flingAnimationSpec: DecayAnimationSpec<Float>? = rememberSplineBasedDecay(),
+    /**
+     * True: the bar follows where the page is — a large title comes back only at the top. False:
+     * it follows the direction of the scroll — the dock, which should fold as you scroll down and
+     * come back the moment you scroll up, wherever you are on the page.
+     */
+    followContent: Boolean = true,
 ): TopAppBarScrollBehavior =
     AppBarScrollBehavior(
         state = state,
         snapAnimationSpec = snapAnimationSpec,
         flingAnimationSpec = flingAnimationSpec,
         canScroll = canScroll,
+        followContent = followContent,
     )
 
 @ExperimentalMaterial3Api
@@ -44,6 +51,7 @@ class AppBarScrollBehavior(
     override val snapAnimationSpec: AnimationSpec<Float>?,
     override val flingAnimationSpec: DecayAnimationSpec<Float>?,
     val canScroll: () -> Boolean = { true },
+    val followContent: Boolean = true,
 ) : TopAppBarScrollBehavior {
     override val isPinned: Boolean = true
     override var nestedScrollConnection =
@@ -65,7 +73,7 @@ class AppBarScrollBehavior(
                 // The bar follows the content itself, not the direction of the last scroll: a large
                 // title comes back only when the page is back at its top. Adding every upward scroll
                 // to it brought "Settings" back halfway down the list on the slightest pull.
-                state.heightOffset = state.contentOffset
+                state.heightOffset = if (followContent) state.contentOffset else state.heightOffset + consumed.y
                 return Offset.Zero
             }
         }

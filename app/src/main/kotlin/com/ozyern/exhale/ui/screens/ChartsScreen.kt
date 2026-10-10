@@ -99,7 +99,7 @@ fun ChartsScreen(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues),
+                .padding(bottom = paddingValues.calculateBottomPadding()),
         ) {
             if (isLoading || chartsPage == null) {
                 ShimmerHost(
@@ -177,8 +177,10 @@ fun ChartsScreen(
             } else {
                 LazyColumn(
                     state = lazyListState,
+                    // The bar's height inside the list, so it scrolls up under the transparent bar.
                     contentPadding = LocalPlayerAwareWindowInsets.current
                         .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+                        .add(WindowInsets(top = paddingValues.calculateTopPadding()))
                         .asPaddingValues(),
                 ) {
                     chartsPage?.sections?.filter { it.title != "Top music videos" }?.forEachIndexed { sectionIndex, section ->

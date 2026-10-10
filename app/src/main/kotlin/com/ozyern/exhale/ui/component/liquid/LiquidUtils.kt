@@ -86,7 +86,7 @@ fun rememberInContentBackdrop(): Backdrop {
     // sibling, so sampling it is legal where the NavHost recording is not — and it is what turns a
     // tinted capsule into glass that visibly bends the artwork behind it. Not from a dialog's own
     // window, where the activity's recording would be misplaced.
-    val page = LocalPageBackdrop.current
+    val page = pageBackdropOrNull
     val inDialog = androidx.compose.ui.platform.LocalView.current.parent is androidx.compose.ui.window.DialogWindowProvider
     val empty = rememberCanvasBackdrop { /* Nothing to refract. */ }
     return if (page != null && !inDialog) page else empty

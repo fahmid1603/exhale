@@ -51,11 +51,34 @@ constructor(
     /** Songs whose lyrics contain the query, for a search that reads like a line of a song. */
     var lyricMatches by mutableStateOf<List<com.ozyern.exhale.utils.LyricSearch.Match>>(emptyList())
 
+    /** The song or album a pasted link from another service points at, found here. */
+    var linkMatch by mutableStateOf<com.ozyern.exhale.innertube.models.YTItem?>(null)
+    var linkLoading by mutableStateOf(false)
+
+    /** A pasted Spotify playlist link, offered for import. */
+    var spotifyPlaylistLink by mutableStateOf<String?>(null)
+
     init {
         // The search bar hands the query over form-encoded, spaces as '+', and navigation decodes
         // only the %-escapes: "say+you+cant+sleep" would be one word, never a line of a song.
         val words = query.replace('+', ' ')
-        if (com.ozyern.exhale.utils.LyricSearch.looksLikeLyrics(words)) {
+        if (com.ozyern.exhale.spotify.SpotifyImport.playlistId(query) != null) {
+            // A whole playlist: offered as an import, not looked up as a song.
+            spotifyPlaylistLink = query
+        } else if (com.ozyern.exhale.utils.MusicLinks.isLink(query)) {
+            linkLoading = true
+            viewModelScope.launch {
+                linkMatch = runCatching { com.ozyern.exhale.utils.MusicLinks.resolve(query) }.getOrNull()
+                linkLoading = false
+                // Not something it could follow: search the text after all rather than show nothing.
+                if (linkMatch == null) {
+                    YouTube.searchSummary(query).onSuccess {
+                        summaryPage = it.filterExplicit(context.dataStore.get(HideExplicitKey, false))
+                            .filterVideo(context.dataStore.get(HideVideoKey, false)).songsFirst()
+                    }
+                }
+            }
+        } else if (com.ozyern.exhale.utils.LyricSearch.looksLikeLyrics(words)) {
             viewModelScope.launch {
                 lyricMatches = runCatching { com.ozyern.exhale.utils.LyricSearch.search(words) }.getOrDefault(emptyList())
             }
@@ -67,7 +90,11 @@ constructor(
                 // One malformed response must never take down the search screen.
                 try {
                     if (filter == null) {
-                        if (summaryPage == null) {
+                        // A pasted link is not a search: YouTube's results for the raw URL are
+                        // podcasts and fan edits. The link's own match is shown instead.
+                        if (summaryPage == null && (linkLoading || linkMatch != null || spotifyPlaylistLink != null)) {
+                            summaryPage = SearchSummaryPage(emptyList())
+                        } else if (summaryPage == null) {
                             YouTube
                                 .searchSummary(query)
                                 .onSuccess {

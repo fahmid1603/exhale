@@ -286,11 +286,12 @@ fun AODSettings(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-.windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
                 .verticalScroll(rememberScrollState())
-// Inside the scroll, so the rows run on up under the transparent bar rather than stopping below it.
-.windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Vertical))
+                // Inside the scroll, so the rows run on up under the transparent bar rather than
+                // stopping below it.
+                .padding(top = paddingValues.calculateTopPadding())
+                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Bottom))
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {

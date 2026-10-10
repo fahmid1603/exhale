@@ -65,7 +65,6 @@ fun SettingsJumpSpotlight(modifier: Modifier = Modifier) {
 
     LaunchedEffect(target) {
         val wanted = target?.let(::key) ?: return@LaunchedEffect
-        android.util.Log.i("JumpDbg", "start wanted=$wanted root=$root")
         val owner = root?.semanticsOwner ?: return@LaunchedEffect SettingsJump.done()
         // Let the page finish arriving: until then the search page is still on screen with the
         // same title on its result row.
@@ -73,42 +72,65 @@ fun SettingsJumpSpotlight(modifier: Modifier = Modifier) {
         var found: Rect? = null
         for (attempt in 0 until 14) {
             val nodes = owner.getAllSemanticsNodes(mergingEnabled = false)
-            android.util.Log.i("JumpDbg", "attempt=$attempt nodes=${nodes.size} root=${root != null} wanted=$wanted scrollers=${nodes.filter { it.config.contains(SemanticsActions.ScrollBy) }.map { it.boundsInRoot }} texts=${nodes.mapNotNull { it.config.getOrNull(SemanticsProperties.Text)?.joinToString() }.filter { it.contains("rid", true) || it.contains("heme", true) }.take(8)}")
+            // Laid out, not a leftover: the page being left can still hold a zero-sized copy of
+            // the same title, and scrolling to that goes nowhere.
             fun SemanticsNode.says(): Boolean =
-                config.getOrNull(SemanticsProperties.Text)?.any { key(it.text) == wanted } == true
+                size.height > 0 &&
+                    config.getOrNull(SemanticsProperties.Text)?.any { key(it.text) == wanted } == true
             // The title's own node first; failing that the merged tree, where a clickable row has
             // folded its title into itself and is the node that carries the text.
             val textNode = nodes.firstOrNull { it.says() }
                 ?: owner.getAllSemanticsNodes(mergingEnabled = true).firstOrNull { it.says() }
-            val viewportHeight = owner.rootSemanticsNode.boundsInRoot.height
+            val viewportHeight = owner.rootSemanticsNode.size.height.toFloat()
             if (textNode != null) {
                 val row = textNode.ancestor { it.config.contains(SemanticsActions.OnClick) } ?: textNode
-                val scroller = row.ancestor { it.config.contains(SemanticsActions.ScrollBy) }
-                val bounds = row.boundsInRoot
-                val wantedTop = viewportHeight * 0.32f
-                val delta = bounds.top - wantedTop
-                if (scroller != null && kotlin.math.abs(delta) > 24f && attempt < 12) {
+                // Where the row really is. `boundsInRoot` is clipped to the screen, so a row below
+                // the fold reports an empty rectangle at the top — which is why the page never
+                // moved: it was asked to scroll to a row it believed it was already showing.
+                val top = row.positionInRoot.y
+                val rect = Rect(row.positionInRoot.x, top, row.positionInRoot.x + row.size.width, top + row.size.height)
+                // The list the row is in: the nearest ancestor that scrolls *vertically*.
+                val scroller = row.ancestor {
+                    it.config.contains(SemanticsActions.ScrollBy) && it.config.contains(SemanticsProperties.VerticalScrollAxisRange)
+                }
+                val delta = top - viewportHeight * 0.32f
+                // Comfortably on screen is good enough: chasing an exact spot the page can't reach
+                // (near its end, say) kept the light from coming on for two seconds.
+                val inView = top > viewportHeight * 0.14f && top + row.size.height < viewportHeight * 0.78f
+                if (scroller != null && !inView && attempt < 12) {
                     scroller.config.getOrNull(SemanticsActions.ScrollBy)?.action?.invoke(0f, delta)
-                    delay(120)
+                    delay(140)
                     continue
                 }
-                found = row.boundsInRoot
+                // The last scroll may still be settling: measure again once it has, or the light
+                // lands a row below the setting.
+                delay(260)
+                val settled = row.positionInRoot
+                found = Rect(settled.x, settled.y, settled.x + row.size.width, settled.y + row.size.height)
                 break
             }
             // Not built yet: a lazy list only composes what is near the screen. Move on down.
-            val scroller = nodes.firstOrNull { it.config.contains(SemanticsActions.ScrollBy) && it.boundsInRoot.height > viewportHeight * 0.5f }
+            val scroller = nodes.firstOrNull {
+                it.config.contains(SemanticsActions.ScrollBy) && it.config.contains(SemanticsProperties.VerticalScrollAxisRange) &&
+                    it.size.height > viewportHeight * 0.5f
+            }
                 ?: break
             scroller.config.getOrNull(SemanticsActions.ScrollBy)?.action?.invoke(0f, viewportHeight * 0.6f)
             delay(140)
         }
-        SettingsJump.done()
-        if (found == null) return@LaunchedEffect
+        // Cleared only once the light has been and gone: clearing the request restarts this effect,
+        // which cancelled the glow before its first frame when it was done here first.
+        if (found == null) {
+            SettingsJump.done()
+            return@LaunchedEffect
+        }
         spot = found
         glow.snapTo(0f)
         glow.animateTo(1f, tween(220))
         delay(900)
         glow.animateTo(0f, tween(700))
         spot = null
+        SettingsJump.done()
     }
 
     val color = MaterialTheme.colorScheme.primary

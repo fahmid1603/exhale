@@ -83,6 +83,9 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         /** And how much quieter fully behind: about 1.5 dB. */
         private const val REAR_DIP = 0.16f
 
+        /** The limiter's ceiling: just under full scale. */
+        private const val LIMIT = 0.97f
+
         private const val TWO_PI = 2.0 * PI
 
         /** Where the orbit is, shared so a new sink (a new song, a seek) picks up where it was. */
@@ -112,7 +115,11 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         }
         sampleRate = inputAudioFormat.sampleRate
         maxItdSamples = ((sampleRate * MAX_ITD_US) / 1_000_000.0).roundToInt().coerceAtLeast(1)
-        capacity = maxItdSamples + 1
+        // One more than the longest delay, and one more again for reading between two samples.
+        capacity = maxItdSamples + 2
+        limiterGain = 1f
+        // Lets go over about 80 ms.
+        limiterRelease = 1f - exp(-1f / (0.08f * sampleRate))
         ringL = FloatArray(capacity)
         ringR = FloatArray(capacity)
         write = 0
@@ -160,16 +167,26 @@ class EightDAudioProcessor : BaseAudioProcessor() {
             }
             position += bytesPerSample * 2
 
-            ringL[write] = left
-            ringR[write] = right
+            // What travels round the head is the *middle* of the mix — vocal, kick, bass, lead —
+            // and the stereo width stays where the mix put it. Panning the two channels themselves
+            // made a part mixed hard to one side all but vanish whenever the orbit swung the other
+            // way: that was the "sounds worse on some songs", on any wide mix.
+            val mid = (left + right) * 0.5f
+            val side = (left - right) * 0.5f
+            ringL[write] = mid
+            ringR[write] = side
 
             // Round the head: sine is left/right, cosine is front/back.
             val pan = (sin(orbit) * applied).toFloat().coerceIn(-1f, 1f)
             val behind = (-cos(orbit)).toFloat().coerceAtLeast(0f) * applied
 
-            val farDelay = (abs(pan) * maxItdSamples).roundToInt()
-            var l = ringL[(write - (if (pan > 0f) farDelay else 0) + capacity) % capacity]
-            var r = ringR[(write - (if (pan < 0f) farDelay else 0) + capacity) % capacity]
+            // The far ear hears it later, by a *fractional* delay: whole-sample steps clicked as
+            // the delay grew and shrank through the orbit.
+            val delay = abs(pan) * maxItdSamples
+            val near = mid
+            val far = delayedMid(delay)
+            var l = if (pan > 0f) far else near
+            var r = if (pan < 0f) far else near
 
             // The rear shadow: a gentle low-pass, blended in as the image goes behind.
             shadowL += shadowAlpha * (l - shadowL)
@@ -179,14 +196,21 @@ class EightDAudioProcessor : BaseAudioProcessor() {
             r += (shadowR - r) * shade
             val level = 1f - behind * REAR_DIP
 
+            // Equal power, centred at unity (the √2), on the middle only; the sides keep most of
+            // their width, a little narrowed so the moving image stands out from the room.
             val angle = (pan + 1f) * (PI / 4.0)
-            l *= cos(angle).toFloat() * 1.4142135f * level
-            r *= sin(angle).toFloat() * 1.4142135f * level
-            // Equal power is +3 dB in the middle relative to a hard pan; the √2 above puts the
-            // centre back at unity, and a soft limit keeps the ear that is turned toward from
-            // clipping on a loud master.
-            l = softClip(l)
-            r = softClip(r)
+            val keepSide = 1f - 0.35f * applied
+            l = l * cos(angle).toFloat() * 1.4142135f * level + side * keepSide
+            r = r * sin(angle).toFloat() * 1.4142135f * level - side * keepSide
+
+            // A clean peak limiter instead of a clipper: the ear the sound turns toward gets up to
+            // +3 dB, and on a loud master the old soft clip turned that into audible distortion.
+            // This turns the whole frame down just enough, and lets go slowly.
+            val peak = maxOf(abs(l), abs(r)) * limiterGain
+            if (peak > LIMIT) limiterGain *= LIMIT / peak
+            else limiterGain += (1f - limiterGain) * limiterRelease
+            l *= limiterGain
+            r *= limiterGain
 
             if (isFloat) {
                 out.putFloat(l)
@@ -206,14 +230,17 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         out.flip()
     }
 
-    /** Transparent below 0.9, then rounding off toward 1 rather than clipping hard. */
-    private fun softClip(x: Float): Float {
-        val a = abs(x)
-        if (a <= 0.9f) return x
-        val over = (a - 0.9f) / 0.1f
-        val shaped = 0.9f + 0.1f * (over / (1f + over))
-        return if (x < 0f) -shaped else shaped
+    /** The middle of the mix [delay] samples ago, read between samples. */
+    private fun delayedMid(delay: Float): Float {
+        val whole = delay.toInt()
+        val frac = delay - whole
+        val a = ringL[(write - whole + capacity) % capacity]
+        val b = ringL[(write - whole - 1 + capacity * 2) % capacity]
+        return a + (b - a) * frac
     }
+
+    private var limiterGain = 1f
+    private var limiterRelease = 0f
 
     override fun onFlush() {
         ringL.fill(0f)
@@ -221,6 +248,7 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         write = 0
         shadowL = 0f
         shadowR = 0f
+        limiterGain = 1f
         // The ramp restarts from the middle so a seek never jumps the image; the orbit itself
         // carries on from where it was.
         applied = 0f

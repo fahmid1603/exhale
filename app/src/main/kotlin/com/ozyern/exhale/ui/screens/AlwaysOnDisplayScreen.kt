@@ -299,6 +299,7 @@ fun AlwaysOnDisplayScreen(navController: NavController) {
     }
     val lyricIndex = lyricLines.indexOfLast { it.time <= position + 150L }
     val lyricNow = lyricLines.getOrNull(lyricIndex)?.text
+    val lyricNowEntry = lyricLines.getOrNull(lyricIndex)
     val lyricNext = lyricLines.getOrNull(lyricIndex + 1)?.text
 
     val displayPosition = sliderPosition ?: position
@@ -378,6 +379,8 @@ fun AlwaysOnDisplayScreen(navController: NavController) {
         clockText = clockText,
         hasLyrics = lyricLines.isNotEmpty(),
         lyricNow = lyricNow,
+        lyricNowEntry = lyricNowEntry,
+        positionNow = { playerConnection.player.currentPosition },
         lyricNext = lyricNext,
         textScale = textScale,
         controlStyle = controlStyle,
@@ -448,6 +451,8 @@ private data class AodCommonParams(
     val clockText: String,
     val hasLyrics: Boolean,
     val lyricNow: String?,
+    val lyricNowEntry: com.ozyern.exhale.lyrics.LyricsEntry?,
+    val positionNow: () -> Long,
     val lyricNext: String?,
     val textScale: Float,
     val controlStyle: AodControlStyle,
@@ -1236,7 +1241,14 @@ private fun AodMetaAndControls(
 
     if (params.hasLyrics) {
         Spacer(Modifier.height(if (isLandscape) 14.dp else 20.dp))
-        AodLyrics(now = params.lyricNow, next = params.lyricNext, textScale = params.textScale, isLandscape = isLandscape)
+        AodLyrics(
+            now = params.lyricNow,
+            nowEntry = params.lyricNowEntry,
+            position = params.positionNow,
+            next = params.lyricNext,
+            textScale = params.textScale,
+            isLandscape = isLandscape,
+        )
     }
 
     if ((params.showTitle || params.showArtist) && (params.showProgress || params.showControls))
@@ -1289,7 +1301,14 @@ private fun AodMetaAndControls(
  * into place as the old one leaves, the way the lyrics page moves, without its scrolling list.
  */
 @Composable
-private fun AodLyrics(now: String?, next: String?, textScale: Float, isLandscape: Boolean) {
+private fun AodLyrics(
+    now: String?,
+    nowEntry: com.ozyern.exhale.lyrics.LyricsEntry?,
+    position: () -> Long,
+    next: String?,
+    textScale: Float,
+    isLandscape: Boolean,
+) {
     androidx.compose.animation.AnimatedContent(
         targetState = now to next,
         transitionSpec = {
@@ -1301,8 +1320,13 @@ private fun AodLyrics(now: String?, next: String?, textScale: Float, isLandscape
     ) { (line, upcoming) ->
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
             Text(
-                // Before the first line: a breath, not an empty gap.
-                text = line ?: "• • •",
+                // Before the first line: a breath, not an empty gap. Word-timed lyrics light up
+                // word by word as they are sung, the way the player's own line does.
+                text = if (line != null && nowEntry != null && nowEntry.text == line) {
+                    rememberWordLitLine(nowEntry, position)
+                } else {
+                    androidx.compose.ui.text.AnnotatedString(line ?: "• • •")
+                },
                 color = Color.White.copy(alpha = if (line == null) 0.45f else 0.95f),
                 fontSize = ((if (isLandscape) 24f else 22f) * textScale).sp,
                 lineHeight = ((if (isLandscape) 30f else 28f) * textScale).sp,
@@ -1325,6 +1349,49 @@ private fun AodLyrics(now: String?, next: String?, textScale: Float, isLandscape
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+        }
+    }
+}
+
+/**
+ * [entry]'s text with the words sung so far at full white and the rest dimmed, moving on word by
+ * word with the song. Colour per word rather than a sweep across the line, because a lyric here
+ * wraps onto two or three lines and a left-to-right edge cannot follow it round. A line without
+ * word timings is returned whole and lit.
+ */
+@Composable
+private fun rememberWordLitLine(
+    entry: com.ozyern.exhale.lyrics.LyricsEntry,
+    position: () -> Long,
+): androidx.compose.ui.text.AnnotatedString {
+    val text = entry.text
+    // Each timed word as (start char, end char, start ms).
+    val spans = remember(entry) {
+        var cursor = 0
+        entry.words.orEmpty().filter { !it.isBackground && it.text.isNotBlank() }.mapNotNull { w ->
+            val word = w.text.trim()
+            val at = text.indexOf(word, cursor)
+            if (at < 0) return@mapNotNull null
+            cursor = at + word.length
+            Triple(at, cursor, (w.startTime * 1000).toLong())
+        }
+    }
+    if (spans.isEmpty()) return remember(text) { androidx.compose.ui.text.AnnotatedString(text) }
+    var now by remember(entry) { mutableLongStateOf(position()) }
+    LaunchedEffect(entry) {
+        while (isActive) {
+            now = position()
+            delay(60L)
+        }
+    }
+    val sung by remember(entry) { androidx.compose.runtime.derivedStateOf { spans.count { it.third <= now } } }
+    return remember(entry, sung) {
+        androidx.compose.ui.text.buildAnnotatedString {
+            append(text)
+            val dimFrom = spans.getOrNull(sung)?.first ?: text.length
+            if (dimFrom < text.length) {
+                addStyle(androidx.compose.ui.text.SpanStyle(color = Color.White.copy(alpha = 0.40f)), dimFrom, text.length)
             }
         }
     }

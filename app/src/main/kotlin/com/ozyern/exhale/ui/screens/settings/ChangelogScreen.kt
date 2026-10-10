@@ -150,7 +150,7 @@ fun ChangelogScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(bottom = paddingValues.calculateBottomPadding())
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(
                         WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
@@ -198,7 +198,7 @@ fun ChangelogScreen(
                             .padding(horizontal = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        item { Spacer(modifier = Modifier.height(8.dp)) }
+                        item { Spacer(modifier = Modifier.height(8.dp + paddingValues.calculateTopPadding())) }
 
                         item {
                             NightlyChangelogCard(nightlyInfo = nightlyInfo!!)
@@ -225,7 +225,7 @@ fun ChangelogScreen(
                             .padding(horizontal = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        item { Spacer(modifier = Modifier.height(8.dp)) }
+                        item { Spacer(modifier = Modifier.height(8.dp + paddingValues.calculateTopPadding())) }
 
                         items(releases) { release ->
                             ReleaseCard(release = release)

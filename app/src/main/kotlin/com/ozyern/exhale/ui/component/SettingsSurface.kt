@@ -148,7 +148,7 @@ fun Modifier.settingsGlassGroup(
     val border = settingsGroupBorderBrush()
     // Glass of the wash behind it where the page records one: bent at the rim and softened, under
     // the same tonal floor so dense rows of text stay as legible as on the flat card.
-    val pageBackdrop = com.ozyern.exhale.ui.component.liquid.LocalPageBackdrop.current
+    val pageBackdrop = com.ozyern.exhale.ui.component.liquid.pageBackdropOrNull
     val inDialog = androidx.compose.ui.platform.LocalView.current.parent is androidx.compose.ui.window.DialogWindowProvider
     if (pageBackdrop != null && !inDialog) {
         return this

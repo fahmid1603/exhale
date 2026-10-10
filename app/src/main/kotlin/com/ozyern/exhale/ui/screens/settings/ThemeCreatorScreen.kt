@@ -300,9 +300,9 @@ fun ThemeCreatorScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(paddingValues)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
                 .verticalScroll(rememberScrollState())
+                .padding(top = paddingValues.calculateTopPadding())
                 // Below the content, not around the viewport: the page scrolls on under the dock.
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Bottom)),
         ) {

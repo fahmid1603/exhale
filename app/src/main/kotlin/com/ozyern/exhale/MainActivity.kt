@@ -844,10 +844,9 @@ class MainActivity : ComponentActivity() {
                                 playerConnection?.isPlaying ?: MutableStateFlow(false)
                             }.collectAsState()
                             if (artworkUrl != null) {
-                                com.ozyern.exhale.ui.component.FluidArtworkBackground(
+                                AmbientArtwork(
                                     url = artworkUrl,
-                                    brightness = 0.5f,
-                                    paused = !ambientPlaying,
+                                    playing = ambientPlaying,
                                     modifier = Modifier.matchParentSize(),
                                 )
                                 // Pages are read over this, so it is held back under a scrim that
@@ -1211,6 +1210,15 @@ class MainActivity : ComponentActivity() {
                     // The cover carried between the mini player and the player (see CoverFlight).
                     val coverFlight = remember { com.ozyern.exhale.ui.player.CoverFlight() }
                     coverFlight.progress = { playerBottomSheetState.progress }
+                    // In-page glass rests while the player is off the bottom: the page underneath
+                    // is stepping back and then hidden, and refracting on every tile for every frame
+                    // of that was the stutter opening the player anywhere but Home. It flips during
+                    // the frames the player is built in, before the spring moves.
+                    LaunchedEffect(playerBottomSheetState) {
+                        snapshotFlow { playerBottomSheetState.progress > 0f }
+                            .distinctUntilChanged()
+                            .collect { up -> com.ozyern.exhale.ui.component.liquid.PageGlass.playerUp = up }
+                    }
 
                     val miniPlayerAnchor by remember {
                         derivedStateOf {
@@ -1352,12 +1360,15 @@ class MainActivity : ComponentActivity() {
                         }
                     )
 
+                    // Drives the dock's A/B fold: by scroll direction, so scrolling up anywhere on the
+                    // page brings the full dock back, not only at the very top.
                     val searchBarScrollBehavior =
                         appBarScrollBehavior(
                             canScroll = {
                                 navBackStackEntry?.destination?.route?.startsWith("search/") == false &&
                                         (playerBottomSheetState.isCollapsed || playerBottomSheetState.isDismissed)
                             },
+                            followContent = false,
                         )
                     val topAppBarScrollBehavior =
                         appBarScrollBehavior(
@@ -2699,8 +2710,12 @@ class MainActivity : ComponentActivity() {
                                         // The tabs' content fades out under the logo and the
                                         // account disc rather than colliding with them.
                                         .then(
-                                            if (navBackStackEntry?.destination?.route in topLevelScreens) {
-                                                Modifier.topEdgeFade {
+                                            if (navBackStackEntry?.destination?.route in topLevelScreens && !com.ozyern.exhale.utils.PerfFlags.noFade) {
+                                                Modifier.topEdgeFade(
+                                                    // Only once content is under the bar: the
+                                                    // page's own scroll, as the dock's fold reads it.
+                                                    active = { searchBarScrollBehavior.state.contentOffset < -1f },
+                                                ) {
                                                     windowsInsets.getTop(density).toFloat() + with(density) { AppBarHeight.toPx() }
                                                 }
                                             } else {
@@ -2714,6 +2729,12 @@ class MainActivity : ComponentActivity() {
                                         // half-way holds the page half-way too.
                                         .graphicsLayer {
                                             if (!coverFlight.enabled) return@graphicsLayer
+                                            // Covered whole by the player: not drawn at all, rather
+                                            // than drawn every frame underneath it.
+                                            if (playerBottomSheetState.progress >= 0.999f) {
+                                                alpha = 0f
+                                                return@graphicsLayer
+                                            }
                                             val r = (playerBottomSheetState.progress / 0.85f).coerceIn(0f, 1f)
                                             val e = r * r * (3f - 2f * r)
                                             if (e <= 0f) return@graphicsLayer
@@ -2900,7 +2921,7 @@ class MainActivity : ComponentActivity() {
                                     prefs[LastSeenVersionCodeKey] = BuildConfig.VERSION_CODE
                                 }
                             }
-                            upgraded
+                            upgraded || com.ozyern.exhale.utils.PerfFlags.showWelcome
                         }
                     }
 
@@ -3063,6 +3084,22 @@ val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils p
  * one has already gone. A change of subject, not a journey — so no horizontal travel, and no zoom
  * of the whole page, which on a screen of album art read as the page being shoved at you.
  */
+/**
+ * The moving artwork behind every page, held still while the player is up (see PageGlass). Its
+ * own small composable so that flag is read here: read where the background is placed, it
+ * recomposed the whole of the activity's content on the first frames of every player open.
+ */
+@Composable
+private fun AmbientArtwork(url: String, playing: Boolean, modifier: Modifier) {
+    com.ozyern.exhale.ui.component.FluidArtworkBackground(
+        url = url,
+        brightness = 0.5f,
+        paused = !playing || com.ozyern.exhale.ui.component.liquid.PageGlass.playerUp ||
+            com.ozyern.exhale.utils.PerfFlags.stillAmbient,
+        modifier = modifier,
+    )
+}
+
 /** Whether this process has already played the boot splash. */
 private var bootSplashShown = false
 

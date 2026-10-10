@@ -53,10 +53,19 @@ private const val ScrollEdgeGround = false
  * fade of the content itself, not a band of colour laid over it, so what shows there is whatever
  * is behind the page (the moving artwork), exactly as at rest. [height] is the bar's bottom edge.
  */
-fun Modifier.topEdgeFade(height: () -> Float): Modifier = this
-    .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+fun Modifier.topEdgeFade(active: () -> Boolean = { true }, height: () -> Float): Modifier = this
+    .graphicsLayer {
+        // The fade needs the page drawn offscreen to cut into, which costs a full-screen buffer
+        // every frame — so only while something has actually scrolled under the bar.
+        compositingStrategy = if (active()) {
+            androidx.compose.ui.graphics.CompositingStrategy.Offscreen
+        } else {
+            androidx.compose.ui.graphics.CompositingStrategy.Auto
+        }
+    }
     .drawWithContent {
         drawContent()
+        if (!active()) return@drawWithContent
         val h = height()
         if (h <= 0f) return@drawWithContent
         val end = h + 14.dp.toPx()

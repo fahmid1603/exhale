@@ -9,6 +9,7 @@
 package com.ozyern.exhale.ui.screens.library
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -195,19 +196,40 @@ fun LibraryScreen(navController: NavController) {
             )
         }
 
-        when (filterType) {
-            LibraryFilter.LIBRARY -> LibraryMixScreen(
-                navController = navController,
-                onTabSelected = { filterType = it },
-            )
-            LibraryFilter.PLAYLISTS -> LibraryPlaylistsScreen(navController, filterContent)
-            LibraryFilter.SONGS -> LibrarySongsScreen(navController, backToLibrary)
-            LibraryFilter.ALBUMS -> LibraryAlbumsScreen(navController, backToLibrary)
-            LibraryFilter.ARTISTS -> LibraryArtistsScreen(navController, backToLibrary)
-            LibraryFilter.SPOTIFY -> LibrarySpotifyPlaylistsScreen(
-                navController = navController,
-                filterContent = filterContent,
-            )
+        // A sub-view is pushed like any other page: in from the right going down a level, back
+        // out to the right coming up. It used to swap in place with no movement at all.
+        androidx.compose.animation.AnimatedContent(
+            targetState = filterType,
+            transitionSpec = {
+                val easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f)
+                val forward = targetState != LibraryFilter.LIBRARY
+                if (forward) {
+                    (androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(420, easing = easing)) { it }) togetherWith
+                        (androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(420, easing = easing)) { -it / 3 } +
+                            androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(210)))
+                } else {
+                    (androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(420, easing = easing)) { -it / 3 } +
+                        androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(210, delayMillis = 140))) togetherWith
+                        (androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(420, easing = easing)) { it })
+                }
+            },
+            label = "libraryView",
+            modifier = Modifier.fillMaxSize(),
+        ) { view ->
+            when (view) {
+                LibraryFilter.LIBRARY -> LibraryMixScreen(
+                    navController = navController,
+                    onTabSelected = { filterType = it },
+                )
+                LibraryFilter.PLAYLISTS -> LibraryPlaylistsScreen(navController, filterContent)
+                LibraryFilter.SONGS -> LibrarySongsScreen(navController, backToLibrary)
+                LibraryFilter.ALBUMS -> LibraryAlbumsScreen(navController, backToLibrary)
+                LibraryFilter.ARTISTS -> LibraryArtistsScreen(navController, backToLibrary)
+                LibraryFilter.SPOTIFY -> LibrarySpotifyPlaylistsScreen(
+                    navController = navController,
+                    filterContent = filterContent,
+                )
+            }
         }
     }
 }

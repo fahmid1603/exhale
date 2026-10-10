@@ -93,7 +93,7 @@ fun LiquidGlassIconButton(
     backdrop: Backdrop? = null,
 ) {
     val dark = isSystemInDarkTheme()
-    val source = backdrop ?: LocalPageBackdrop.current
+    val source = backdrop ?: com.ozyern.exhale.ui.component.liquid.pageBackdropOrNull
     val animationScope = rememberCoroutineScope()
     val press = remember(animationScope) { InteractiveHighlight(animationScope) }
     val interactionSource = remember { MutableInteractionSource() }

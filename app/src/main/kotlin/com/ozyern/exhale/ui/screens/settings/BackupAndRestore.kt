@@ -264,13 +264,12 @@ fun BackupAndRestore(
         LazyColumn(
             modifier = Modifier
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .padding(innerPadding)
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal)
                 ),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(
-                start = 16.dp, end = 16.dp, top = 8.dp,
+                start = 16.dp, end = 16.dp, top = 8.dp + innerPadding.calculateTopPadding(),
                 bottom = 16.dp + LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding(),
             ),
         ) {

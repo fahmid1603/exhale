@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -51,6 +53,25 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
  * is not visible anywhere on screen.
  */
 val LocalPageBackdrop = compositionLocalOf<LayerBackdrop?> { null }
+
+/**
+ * In-page glass, and what it bends.
+ *
+ * [playerUp] is set while the player is off the bottom — coming up, open, or going down. The moving
+ * artwork behind every page holds still for that time: the glass on a page bends that artwork, so
+ * while it moves every pane re-renders its lens and blur each frame, and with a page full of glass
+ * under the player that was the stutter opening it anywhere but Home. Held still, each pane is a
+ * cached layer and the page steps back under the player for nothing. (Switching the glass itself
+ * off instead cost a recomposition of every pane on the first frame, which was worse.)
+ */
+object PageGlass {
+    var live by androidx.compose.runtime.mutableStateOf(true)
+    var playerUp by androidx.compose.runtime.mutableStateOf(false)
+}
+
+/** [LocalPageBackdrop], or null while [PageGlass] is resting. */
+val pageBackdropOrNull: LayerBackdrop?
+    @Composable get() = if (PageGlass.live && !com.ozyern.exhale.utils.PerfFlags.noGlass) LocalPageBackdrop.current else null
 
 /**
  * Paints [background] into a fresh [LayerBackdrop] and draws [content] over it as a sibling,

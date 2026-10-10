@@ -211,7 +211,9 @@ fun StorageSettings(
             .verticalScroll(rememberScrollState())
             // Below the content, not around the viewport: the page scrolls on under the dock.
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Bottom))
-            .padding(12.dp)
+            // The 16dp every settings page lines its cards up on. 12 here, plus the switches' own 16,
+            // put the switch cards and the storage cards on two different edges.
+            .padding(vertical = 12.dp)
     ) {
         Spacer(
             Modifier.windowInsetsPadding(
@@ -457,7 +459,7 @@ fun CacheCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         // Flat and inset, like every other grouped block. `surface` is now the settings PAGE
         // colour, so a card painted with it would have been invisible against the background —
         // the group tint is what separates a card from the page here, not a shadow.

@@ -359,6 +359,16 @@ fun LibraryMixScreen(
                 if (showCreate) {
                     com.ozyern.exhale.ui.component.CreatePlaylistDialog(onDismiss = { showCreate = false })
                 }
+                var showSpotifyImport by rememberSaveable { mutableStateOf(false) }
+                if (showSpotifyImport) {
+                    com.ozyern.exhale.spotify.SpotifyImportDialog(
+                        onDismiss = { showSpotifyImport = false },
+                        onImported = { id ->
+                            showSpotifyImport = false
+                            navController.navigate("local_playlist/$id")
+                        },
+                    )
+                }
                 Column {
                     LibraryShelfHeader(
                         title = stringResource(R.string.filter_playlists),
@@ -386,7 +396,12 @@ fun LibraryMixScreen(
                                 PlaylistMenu(playlist = playlist, coroutineScope = coroutineScope, onDismiss = menuState::dismiss)
                             }
                         },
-                        leading = { NewPlaylistCard(onClick = { showCreate = true }) },
+                        leading = {
+                            Row(horizontalArrangement = Arrangement.spacedBy(GridGutter)) {
+                                NewPlaylistCard(onClick = { showCreate = true })
+                                ImportSpotifyCard(onClick = { showSpotifyImport = true })
+                            }
+                        },
                     )
                 }
             }

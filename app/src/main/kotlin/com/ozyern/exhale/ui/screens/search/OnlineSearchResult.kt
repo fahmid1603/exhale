@@ -46,6 +46,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
@@ -114,8 +115,8 @@ fun OnlineSearchResult(
     val lazyListState = rememberLazyListState()
     // The lyric matches arrive after the results and go in above them; a list still at its top
     // would otherwise keep its place and leave them hidden above the first row.
-    androidx.compose.runtime.LaunchedEffect(viewModel.lyricMatches) {
-        if (viewModel.lyricMatches.isNotEmpty() && lazyListState.firstVisibleItemIndex <= 3) {
+    androidx.compose.runtime.LaunchedEffect(viewModel.lyricMatches, viewModel.linkMatch) {
+        if ((viewModel.lyricMatches.isNotEmpty() || viewModel.linkMatch != null) && lazyListState.firstVisibleItemIndex <= 3) {
             lazyListState.animateScrollToItem(0)
         }
     }
@@ -267,6 +268,62 @@ fun OnlineSearchResult(
             ),
         ) {
             if (searchFilter == null) {
+                // A Spotify playlist link: bring the whole playlist in.
+                viewModel.spotifyPlaylistLink?.let { link ->
+                    item(key = "spotify_import") {
+                        var show by remember { androidx.compose.runtime.mutableStateOf(false) }
+                        if (show) {
+                            com.ozyern.exhale.spotify.SpotifyImportDialog(
+                                initialLink = link,
+                                onDismiss = { show = false },
+                                onImported = { id ->
+                                    show = false
+                                    navController.navigate("local_playlist/$id")
+                                },
+                            )
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 10.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Color(0xFF1ED760).copy(alpha = 0.16f))
+                                .clickable { show = true }
+                                .padding(16.dp),
+                        ) {
+                            Icon(painterResource(R.drawable.spotify_icon), null, tint = Color(0xFF1ED760), modifier = Modifier.size(28.dp))
+                            Spacer(Modifier.width(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("Import this Spotify playlist", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                                Text(
+                                    "Every song found on YouTube Music and saved to your library",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+                // A link from Spotify, Apple Music, Deezer, Tidal…: the same song or album, here.
+                if (viewModel.linkLoading || viewModel.linkMatch != null) {
+                    item(key = "link_header") {
+                        SearchSectionHeader(title = "From your link", onSeeAll = null, modifier = Modifier.animateItem())
+                    }
+                    val match = viewModel.linkMatch
+                    if (match != null) {
+                        item(key = "link/${match.id}") { ytItemContent(match) }
+                    } else {
+                        item(key = "link_loading") {
+                            Text(
+                                text = "Finding it on YouTube Music…",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                            )
+                        }
+                    }
+                }
                 // A line of a song typed into search: the songs it comes from, above everything
                 // else — leaving out any YouTube already put first, so nothing shows twice.
                 val alreadyFirst = allModeSections.firstOrNull()?.second?.take(2)?.map { it.id }.orEmpty()

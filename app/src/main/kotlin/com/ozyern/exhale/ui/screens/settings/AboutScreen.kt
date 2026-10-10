@@ -233,13 +233,14 @@ private fun AboutScreenContent(
         },
     ) { innerPadding ->
         LazyColumn(
+            // The bar's height goes inside the list, not around it, so the rows scroll up under the
+            // transparent bar instead of being cut off at its lower edge.
             modifier = Modifier
-                .padding(innerPadding)
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal)
                 ),
             contentPadding = PaddingValues(
-                start = pad, end = pad, top = 4.dp,
+                start = pad, end = pad, top = 4.dp + innerPadding.calculateTopPadding(),
                 bottom = 40.dp + LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding(),
             ),
         ) {

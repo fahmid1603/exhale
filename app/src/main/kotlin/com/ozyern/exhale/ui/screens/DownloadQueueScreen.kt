@@ -95,8 +95,8 @@ fun DownloadQueueScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues),
-                contentPadding = PaddingValues(bottom = 80.dp)
+                    .padding(bottom = paddingValues.calculateBottomPadding()),
+                contentPadding = PaddingValues(top = paddingValues.calculateTopPadding(), bottom = 80.dp)
             ) {
                 items(downloads, key = { it.download.request.id }) { item ->
                     DownloadQueueItem(

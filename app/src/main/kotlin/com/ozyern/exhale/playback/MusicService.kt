@@ -371,6 +371,17 @@ class MusicService :
     private val avoidStreamCodecs: Set<String> by lazy {
         if (deviceSupportsMimeType("audio/opus")) emptySet() else setOf("opus")
     }
+
+    /**
+     * Codecs that failed to *decode* for one song: a stream can download cleanly and still not
+     * play — a malformed WebM, an Opus file the hardware decoder rejects — and that used to go
+     * straight to "Couldn't play X, so it was skipped". Such a song is asked for again without the
+     * codec that failed, from another client, before it is given up on.
+     */
+    private val songAvoidCodecs = java.util.concurrent.ConcurrentHashMap<String, Set<String>>()
+
+    private fun avoidCodecsFor(mediaId: String): Set<String> =
+        songAvoidCodecs[mediaId]?.let { avoidStreamCodecs + it } ?: avoidStreamCodecs
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
@@ -5235,6 +5246,29 @@ class MusicService :
             return
         }
 
+        // The stream arrived but would not decode or parse (3xxx / 4xxx): ask again, from another
+        // client and without Opus — the codec behind nearly every such failure — before skipping.
+        val decodeError = error.errorCode in 3000..3999 || error.errorCode in 4000..4999
+        if (decodeError && currentMediaId != null && markAndCheckRecoveryAllowance(currentMediaId)) {
+            val failingClient = playbackUrlCache[currentMediaId]?.first?.toHttpUrlOrNull()
+                ?.queryParameter("c")?.trim()?.takeIf { it.isNotBlank() }
+            Timber.tag("MusicService").w(
+                "Decode error for $currentMediaId (code=${error.errorCode}, client=${failingClient ?: "unknown"}) — re-resolving without opus",
+            )
+            songAvoidCodecs[currentMediaId] = setOf("opus")
+            YTPlayerUtils.markStreamClientFailed(currentMediaId, failingClient, null)
+            YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
+            playbackUrlCache.remove(currentMediaId)
+            // The cache is keyed by song, not by stream: the bytes that would not decode have to
+            // go before the retry, or it plays them again.
+            scope.launch {
+                withContext(Dispatchers.IO) { runCatching { playerCache.removeResource(currentMediaId) } }
+                player.prepare()
+                player.playWhenReady = true
+            }
+            return
+        }
+
         // Any other network-side failure — a read timing out, a connection reset part-way through a
         // range — is transient: pick the song up again from where it was rather than stopping.
         // The same per-song allowance as the recoveries above keeps a truly broken stream from
@@ -5615,7 +5649,7 @@ class MusicService :
                                     audioQuality = audioQuality,
                                     connectivityManager = connectivityManager,
                                     preferredStreamClient = preferredStreamClient,
-                                    avoidCodecs = avoidStreamCodecs,
+                                    avoidCodecs = avoidCodecsFor(mediaId),
                                     preferredCodec = preferredAudioCodec,
                                 )
                             }
@@ -5660,7 +5694,7 @@ class MusicService :
                         audioQuality = audioQuality,
                         connectivityManager = connectivityManager,
                         preferredStreamClient = preferredStreamClient,
-                        avoidCodecs = avoidStreamCodecs,
+                        avoidCodecs = avoidCodecsFor(mediaId),
                         preferredCodec = preferredAudioCodec,
                     )
                 } ?: Result.failure(java.net.SocketTimeoutException("No stream for $mediaId within ${RESOLVE_TIMEOUT_MS / 1000} s"))
@@ -5724,7 +5758,7 @@ class MusicService :
                             audioQuality = audioQuality,
                             connectivityManager = connectivityManager,
                             preferredStreamClient = preferredStreamClient,
-                            avoidCodecs = avoidStreamCodecs,
+                            avoidCodecs = avoidCodecsFor(counterpart),
                             preferredCodec = preferredAudioCodec,
                         )
                     }.getOrNull()
@@ -5914,7 +5948,7 @@ class MusicService :
                     audioQuality = audioQuality,
                     connectivityManager = connectivityManager,
                     preferredStreamClient = preferredStreamClient,
-                    avoidCodecs = avoidStreamCodecs,
+                    avoidCodecs = avoidCodecsFor(mediaId),
                     preferredCodec = preferredAudioCodec,
                 ).getOrNull() ?: return@runCatching
                 storeResolvedStream(mediaId, playbackData)
@@ -5965,7 +5999,7 @@ class MusicService :
                     audioQuality = audioQuality,
                     connectivityManager = connectivityManager,
                     preferredStreamClient = preferredStreamClient,
-                    avoidCodecs = avoidStreamCodecs,
+                    avoidCodecs = avoidCodecsFor(mediaId),
                     preferredCodec = preferredAudioCodec,
                 ).getOrNull() ?: return@runCatching
                 storeResolvedStream(mediaId, playbackData)
@@ -6007,7 +6041,7 @@ class MusicService :
                 audioQuality = audioQuality,
                 connectivityManager = connectivityManager,
                 preferredStreamClient = preferredStreamClient,
-                avoidCodecs = avoidStreamCodecs,
+                avoidCodecs = avoidCodecsFor(mediaId),
                 preferredCodec = preferredAudioCodec,
             ).getOrNull()?.let { storeResolvedStream(mediaId, it) } ?: return@withContext null
             val uri = url.toUri()
