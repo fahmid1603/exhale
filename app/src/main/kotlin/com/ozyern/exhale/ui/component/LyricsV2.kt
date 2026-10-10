@@ -6,6 +6,12 @@
 
 package com.ozyern.exhale.ui.component
 
+import androidx.compose.runtime.derivedStateOf
+import com.kyant.backdrop.effects.colorControls
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.animation.togetherWith
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -1115,18 +1121,38 @@ fun LyricsV2(
             exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.9f, animationSpec = tween(140)),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 18.dp),
+                // Above the row of round lyric buttons when they are there (44dp discs on an 18dp
+                // inset); on the same line it sat behind them, half covered.
+                .padding(bottom = if (cornerButtons) 76.dp else 18.dp),
         ) {
+            // Where the sung line is from here: above the screen, below it, or on it.
+            val direction by remember {
+                derivedStateOf {
+                    val visible = listState.layoutInfo.visibleItemsInfo
+                    when {
+                        visible.isEmpty() -> 0
+                        currentLineIndex < visible.first().index -> -1
+                        currentLineIndex > visible.last().index -> 1
+                        else -> 0
+                    }
+                }
+            }
+            val liveLine = entriesWithWords.getOrNull(currentLineIndex)?.text?.trim().orEmpty()
             LyricsSyncPill(
                 backdrop = lyricsBackdrop,
                 tint = textColor,
+                direction = direction,
+                liveLine = liveLine,
+                restartKey = lastManualScrollTime,
                 onClick = {
                     isManualScrolling = false
                     scope.launch {
+                        // Onto the same anchor the follow holds the line at, so the hand-off back
+                        // to it is not a second little jump.
                         val viewportHeight = listState.layoutInfo.viewportSize.height
                         listState.animateScrollToItem(
                             index = currentLineIndex,
-                            scrollOffset = -(viewportHeight * 0.35f).toInt()
+                            scrollOffset = -(viewportHeight * 0.38f).toInt()
                         )
                     }
                 },
@@ -2044,12 +2070,40 @@ private fun LyricsWaitingLines(color: Color) {
  * draw that the chrome glass caused in page content. Where no runtime shader exists (below API 33)
  * it falls back to the painted glass surface.
  */
+/*
+ * What it shows, beyond the word "Sync":
+ *
+ *  - Which way the song is. An arrow up or down while the sung line is off screen, the sync glyph
+ *    while it is on it; the arrow turns rather than swaps, so scrolling past the line flips it in
+ *    place.
+ *  - What is being sung. The live line rides in the pill, so reading back through a verse never
+ *    loses the song; it is the word "Sync" again through a gap with no words.
+ *  - When it will go back by itself. A ring round the glyph fills over the same three seconds the
+ *    follow waits before it takes over again, and starts over with every touch of the list - the
+ *    timeout was always there, it just could not be seen.
+ */
 @Composable
 private fun LyricsSyncPill(
     backdrop: com.kyant.backdrop.Backdrop,
     tint: Color,
+    direction: Int,
+    liveLine: String,
+    restartKey: Long,
     onClick: () -> Unit,
 ) {
+    val countdown = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(restartKey) {
+        countdown.snapTo(0f)
+        countdown.animateTo(
+            1f,
+            androidx.compose.animation.core.tween(MANUAL_SCROLL_TIMEOUT_MS.toInt(), easing = androidx.compose.animation.core.LinearEasing),
+        )
+    }
+    val arrowTurn by animateFloatAsState(
+        targetValue = if (direction < 0) 180f else 0f,
+        animationSpec = spring(dampingRatio = 0.62f, stiffness = 420f),
+        label = "syncArrowTurn",
+    )
     val haptic = LocalHapticFeedback.current
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
@@ -2073,16 +2127,19 @@ private fun LyricsSyncPill(
             backdrop = backdrop,
             shape = { shape },
             effects = {
-                blur(6f.dp.toPx())
-                lens(8f.dp.toPx(), 14f.dp.toPx(), true)
+                // The dock's recipe, a size down: colour lifted, a light blur, and a lens deep
+                // enough that the words passing under the rim visibly bend.
+                colorControls(saturation = 1.5f)
+                blur(7f.dp.toPx())
+                lens(14f.dp.toPx(), 20f.dp.toPx(), true)
             },
-            highlight = { Highlight.Ambient },
+            highlight = { Highlight.Default },
             onDrawSurface = {
-                drawRect(Color.Black.copy(alpha = 0.22f))
+                drawRect(Color.Black.copy(alpha = 0.26f))
             },
         )
     } else {
-        base.liquidGlassSurface(shape, tint = Color.Black.copy(alpha = 0.28f))
+        base.liquidGlassSurface(shape, tint = Color.Black.copy(alpha = 0.32f))
     }
 
     Row(
@@ -2092,22 +2149,72 @@ private fun LyricsSyncPill(
                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
             }
-            .padding(horizontal = 18.dp, vertical = 11.dp),
+            .animateContentSize(spring(dampingRatio = 0.8f, stiffness = 520f))
+            .padding(start = 8.dp, end = 18.dp, top = 7.dp, bottom = 7.dp)
+            .widthIn(max = 300.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Icon(
-            painter = painterResource(R.drawable.sync),
-            contentDescription = null,
-            tint = tint,
-            modifier = Modifier.size(17.dp),
-        )
-        Text(
-            text = stringResource(R.string.lyrics_sync),
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = tint,
-        )
+        // The glyph in a ring that fills until the follow takes over again.
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(30.dp)) {
+            androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
+                val stroke = 2.dp.toPx()
+                val inset = stroke / 2
+                val arcSize = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke)
+                val topLeft = Offset(inset, inset)
+                drawArc(tint.copy(alpha = 0.18f), 0f, 360f, false, topLeft, arcSize, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
+                drawArc(
+                    tint.copy(alpha = 0.9f), -90f, 360f * countdown.value, false, topLeft, arcSize,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round),
+                )
+            }
+            androidx.compose.animation.Crossfade(targetState = direction == 0, animationSpec = tween(140), label = "syncGlyph") { onScreen ->
+                Icon(
+                    painter = painterResource(if (onScreen) R.drawable.sync else R.drawable.arrow_downward),
+                    contentDescription = null,
+                    tint = tint,
+                    modifier = Modifier
+                        .size(16.dp)
+                        .graphicsLayer { rotationZ = if (onScreen) 0f else arrowTurn },
+                )
+            }
+        }
+        androidx.compose.animation.AnimatedContent(
+            targetState = liveLine.ifBlank { null },
+            transitionSpec = {
+                (fadeIn(tween(220)) + androidx.compose.animation.slideInVertically(tween(260)) { it / 2 }) togetherWith
+                    (fadeOut(tween(140)) + androidx.compose.animation.slideOutVertically(tween(200)) { -it / 2 })
+            },
+            label = "syncLine",
+        ) { line ->
+            if (line == null) {
+                Text(
+                    text = stringResource(R.string.lyrics_sync),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = tint,
+                )
+            } else {
+                Column {
+                    Text(
+                        text = stringResource(R.string.lyrics_sync),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.4.sp,
+                        color = tint.copy(alpha = 0.6f),
+                        maxLines = 1,
+                    )
+                    Text(
+                        text = line,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = tint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
     }
 }
 
