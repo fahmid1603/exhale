@@ -732,6 +732,7 @@ internal fun NowPlayingScreen(
         videoMissing = !has
     }
     var videoFullscreen by remember { mutableStateOf(false) }
+    var horizontalLyrics by remember { mutableStateOf(false) }
     // One fresh try when a stream dies mid-play, as the Windows app re-asks for its URL: a stale link
     // is the usual reason, and a new one usually plays.
     var videoRetry by remember(mediaMetadata.id) { mutableIntStateOf(0) }
@@ -1492,7 +1493,32 @@ internal fun NowPlayingScreen(
                                     modifier = Modifier.size(20.dp),
                                 )
                             }
+                            // Horizontal lyrics: the phone turned on its side, cover on the left.
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(start = 182.dp, bottom = 30.dp)
+                                    .size(44.dp)
+                                    .playerGlass(CircleShape)
+                                    .clip(CircleShape)
+                                    .clickable { horizontalLyrics = true },
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.screen_rotation),
+                                    contentDescription = "Horizontal lyrics",
+                                    tint = Color.White.copy(alpha = 0.85f),
+                                    modifier = Modifier.size(21.dp),
+                                )
+                            }
                         }
+                    }
+                    if (horizontalLyrics) {
+                        HorizontalLyrics(
+                            sliderPositionProvider = sliderPositionProvider,
+                            onExit = { horizontalLyrics = false },
+                            onMore = openMenu,
+                        )
                     }
 
                     // ---- Queue ----
@@ -2253,7 +2279,7 @@ private fun BottomGlyph(
 
 /** The translucent round button beside the credits — the like and the menu. */
 @Composable
-private fun CircleGlyph(
+internal fun CircleGlyph(
     icon: Int,
     onClick: () -> Unit,
     active: Boolean = false,

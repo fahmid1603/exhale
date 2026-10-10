@@ -832,7 +832,7 @@ fun LyricsScreen(
  * change, with a dark scrim so white lyrics stay readable on bright covers.
  */
 @Composable
-private fun AppleLyricsBackground(mediaMetadata: MediaMetadata) {
+internal fun AppleLyricsBackground(mediaMetadata: MediaMetadata) {
     AnimatedContent(
         targetState = mediaMetadata.thumbnailUrl,
         transitionSpec = { fadeIn(tween(800)) togetherWith fadeOut(tween(800)) },

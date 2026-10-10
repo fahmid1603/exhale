@@ -99,14 +99,30 @@ internal fun FullscreenMusicVideo(
     stream: YTPlayerUtils.VideoStream,
     onExit: () -> Unit,
 ) {
-    val playerConnection = LocalPlayerConnection.current ?: return
-    val player = playerConnection.player
-    val isPlaying by playerConnection.isPlaying.collectAsState()
-    val metadata by playerConnection.mediaMetadata.collectAsState()
-    val canSkipNext by playerConnection.canSkipNext.collectAsState()
     val activity = LocalContext.current as? android.app.Activity
 
-    // Landscape while it is up, whichever way the phone was held; back to before on the way out.
+    HoldLandscape(activity)
+
+    Dialog(
+        onDismissRequest = onExit,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+            dismissOnClickOutside = false,
+        ),
+    ) {
+        FullscreenWindow()
+        BackHandler(onBack = onExit)
+        FullscreenVideoBody(stream, onExit)
+    }
+}
+
+/**
+ * Landscape while the composable that calls this is up, whichever way the phone was held; upright
+ * again on the way out. Shared by the full-screen video and the horizontal lyrics.
+ */
+@Composable
+internal fun HoldLandscape(activity: android.app.Activity?) {
     DisposableEffect(activity) {
         FullscreenVideoState.active = true
         val before = activity?.requestedOrientation
@@ -129,34 +145,38 @@ internal fun FullscreenMusicVideo(
             }
         }
     }
+}
 
-    Dialog(
-        onDismissRequest = onExit,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-            dismissOnClickOutside = false,
-        ),
-    ) {
-        val window = (LocalView.current.parent as? DialogWindowProvider)?.window
-        val view = LocalView.current
-        DisposableEffect(window) {
-            if (window != null) {
-                WindowCompat.setDecorFitsSystemWindows(window, false)
-                window.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
-                window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.BLACK))
-                window.attributes = window.attributes.apply {
-                    layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-                }
-                WindowInsetsControllerCompat(window, view).apply {
-                    hide(WindowInsetsCompat.Type.systemBars())
-                    systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                }
+/** Inside a full-screen Dialog: the whole display, edge to edge, system bars away. */
+@Composable
+internal fun FullscreenWindow() {
+    val window = (LocalView.current.parent as? DialogWindowProvider)?.window
+    val view = LocalView.current
+    DisposableEffect(window) {
+        if (window != null) {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            window.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.BLACK))
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
-            onDispose { }
+            WindowInsetsControllerCompat(window, view).apply {
+                hide(WindowInsetsCompat.Type.systemBars())
+                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
         }
-        BackHandler(onBack = onExit)
+        onDispose { }
+    }
+}
 
+@Composable
+private fun FullscreenVideoBody(stream: YTPlayerUtils.VideoStream, onExit: () -> Unit) {
+    val playerConnection = LocalPlayerConnection.current ?: return
+    val player = playerConnection.player
+    val isPlaying by playerConnection.isPlaying.collectAsState()
+    val metadata by playerConnection.mediaMetadata.collectAsState()
+    val canSkipNext by playerConnection.canSkipNext.collectAsState()
+    run {
         // Shown on arrival and on any tap; gone three seconds after the last one while it plays.
         var controls by remember { mutableStateOf(true) }
         var touched by remember { mutableIntStateOf(0) }
