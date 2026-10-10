@@ -4,6 +4,7 @@ import { AnnounceBar, RELEASE_PATH, SiteFooter, TopBar } from './components/Chro
 import Dock from './components/Dock.jsx'
 import Features from './components/Features.jsx'
 import Words from './components/Words.jsx'
+import Segments from './components/Segments.jsx'
 import Phone from './components/Phone.jsx'
 import Ribbon from './components/Ribbon.jsx'
 import {
@@ -38,28 +39,14 @@ const SECTIONS = [
 function Bars({ active, onSelect }) {
   return (
     <>
-      {/* The release strip is news and the topbar is the project; the third
-          tier is this page's chapters, as ColorOS's page lays them out: the
-          name on the left, the chapters in a row, the one being read set
-          heavier. It sticks to the top once the other two have scrolled away. */}
+      {/* Three tiers, narrowing as they go: the release strip is news, the
+          topbar is the project, and the floating segmented capsule is this page. */}
       <AnnounceBar />
       <TopBar />
 
-      <nav className="home-chapters" aria-label="On this page">
-        <div className="home-chapters-row">
-          <span className="home-chapters-name">Exhale</span>
-          {SECTIONS.map((s, i) => (
-            <a
-              key={s.id}
-              href={`#${s.id}`}
-              data-on={active === i}
-              onClick={() => onSelect(i)}
-            >
-              {s.label}
-            </a>
-          ))}
-        </div>
-      </nav>
+      <div className="segbar">
+        <Segments items={SECTIONS} active={active} onSelect={onSelect} />
+      </div>
     </>
   )
 }

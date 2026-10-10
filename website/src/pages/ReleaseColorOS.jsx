@@ -4,6 +4,7 @@ import { Link } from '../router.jsx'
 import { ALL_RELEASES, LATEST_RELEASE, releasePath, tagUrl } from '../releases.js'
 import { RELEASES, REPO } from '../content.js'
 import { useReveals } from '../hooks.js'
+import Segments from '../components/Segments.jsx'
 import '../coloros.css'
 
 /*
@@ -80,28 +81,15 @@ function ChapterNav({ chapters }) {
     }
   }, [chapters])
 
-  // Keep the lit chapter in view when the row scrolls sideways on a phone. Only
-  // the row moves: scrollIntoView on a sticky element scrolls the window too,
-  // and dragged the page back to the top every time the chapter changed.
-  const row = useRef(null)
-  useEffect(() => {
-    const box = row.current
-    const link = box?.querySelector('[data-on="true"]')
-    if (!box || !link || box.scrollWidth <= box.clientWidth) return
-    box.scrollTo({ left: link.offsetLeft - (box.clientWidth - link.offsetWidth) / 2, behavior: 'smooth' })
-  }, [active])
-
+  // The site's own floating capsule, the same one the home page wears.
   return (
-    <nav className="c17-nav" aria-label="Chapters">
-      <div className="c17-nav-row" ref={row}>
-        <span className="c17-nav-name">Exhale 1.0.405</span>
-        {chapters.map((c) => (
-          <a key={c.id} href={`#${c.id}`} data-on={active === c.id}>
-            {c.label}
-          </a>
-        ))}
-      </div>
-    </nav>
+    <div className="segbar">
+      <Segments
+        items={chapters}
+        active={Math.max(0, chapters.findIndex((c) => c.id === active))}
+        onSelect={(i) => setActive(chapters[i].id)}
+      />
+    </div>
   )
 }
 
