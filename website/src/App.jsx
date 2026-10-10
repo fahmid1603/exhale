@@ -6,7 +6,7 @@ import Features from './components/Features.jsx'
 import Words from './components/Words.jsx'
 import Segments from './components/Segments.jsx'
 import Phone from './components/Phone.jsx'
-import Ribbon from './components/Ribbon.jsx'
+import KeyHero from './components/KeyHero.jsx'
 import {
   ABOUT_FACTS,
   FEATURES,
@@ -18,11 +18,11 @@ import {
   SHOTS,
   SHOTS_304,
   SHOT304,
-  TAGLINE,
   VERSION,
 } from './content.js'
 import { useHeroScroll, useOnScreen, useReveals, prefersReducedMotion } from './hooks.js'
 import { Link } from './router.jsx'
+import { LATEST_RELEASE } from './releases.js'
 
 const SECTIONS = [
   { id: 'overview', label: 'Overview' },
@@ -48,119 +48,6 @@ function Bars({ active, onSelect }) {
         <Segments items={SECTIONS} active={active} onSelect={onSelect} />
       </div>
     </>
-  )
-}
-
-/* ----------------------------------------------------------- hero device */
-
-/**
- * The screens either side of the phone.
- *
- * `x` and `y` are multiples of a card's own size rather than the container's,
- * so the arrangement keeps its proportions at any width instead of collapsing
- * on a laptop and flying apart on a desktop.
- *
- * The outer pair are the two screens least like a player. Five near-identical
- * now-playing screens would read as one screenshot printed five times.
- */
-const FAN = [
-  { shot: SHOT.about, x: '-186%', y: '10%', r: '-9deg', s: 0.58, o: 0.5, crop: 'top center', d: 620 },
-  { shot: SHOT.artist, x: '-130%', y: '3%', r: '-5.5deg', s: 0.76, o: 0.76, crop: '50% 18%', d: 540 },
-  { shot: SHOT.lyrics, x: '-72%', y: '-2%', r: '-2.5deg', s: 0.95, o: 0.96, crop: '50% 30%', d: 460 },
-  { shot: SHOT.player, x: '72%', y: '-2%', r: '2.5deg', s: 0.95, o: 0.96, crop: '50% 72%', d: 460 },
-  { shot: SHOT.home, x: '130%', y: '3%', r: '5.5deg', s: 0.76, o: 0.76, crop: '50% 78%', d: 540 },
-  { shot: SHOT.about, x: '186%', y: '10%', r: '9deg', s: 0.58, o: 0.5, crop: '50% 44%', d: 620 },
-]
-
-/**
- * The device under the headline, cycling on its own, flanked by the rest.
- *
- * One claim above, answered six ways at a glance before anyone has scrolled.
- * The phone cycles the screens; the cards hold them still.
- *
- * Answers the hero's pause button — someone who stopped the light at the top
- * of the page meant "stop moving", not "stop that one thing".
- */
-function HeroDevice({ running }) {
-  const [index, setIndex] = useState(0)
-  const ref = useRef(null)
-  const live = useOnScreen(ref, '140px')
-  const awake = running && live && !prefersReducedMotion()
-
-  useEffect(() => {
-    if (!awake) return
-    const id = window.setInterval(() => {
-      setIndex((current) => (current + 1) % SHOTS.length)
-    }, 3600)
-    return () => window.clearInterval(id)
-  }, [awake])
-
-  return (
-    <div className="hero-fan reveal" ref={ref} style={{ '--d': '360ms' }}>
-      {/* Decorative: the phone in the middle carries all five of these in
-          turn, with the alt text, so announcing them again would read the
-          same app to a screen reader six times. */}
-      <div className="fan" aria-hidden="true">
-        {FAN.map((card, i) => (
-          <figure
-            className="fan-card"
-            key={`${card.shot}-${i}`}
-            style={{
-              '--x': card.x,
-              '--y': card.y,
-              '--r': card.r,
-              '--s': card.s,
-              '--o': card.o,
-              '--crop': card.crop,
-              '--d': `${card.d}ms`,
-            }}
-          >
-            <img src={SHOTS[card.shot].src} alt="" loading="lazy" decoding="async" />
-          </figure>
-        ))}
-      </div>
-
-      <div className="device-hero">
-        <Phone shots={SHOTS} index={index} />
-      </div>
-    </div>
-  )
-}
-
-/* -------------------------------------------------------------- lineup */
-
-/**
- * The devices under the opening, the way Apple lays its lineup out: upright,
- * different sizes, on black, the big ones running off the edges of the page and
- * a small one in the middle that the eye lands on. Each rises in on its own beat.
- */
-function HeroLineup() {
-  return (
-    <div className="lineup" aria-hidden="true">
-      <div className="table reveal" style={{ '--d': '160ms' }}>
-        <div className="obj hw-tab">
-          <div className="obj-screen">
-            <img src="/media/keyart.jpg" alt="" decoding="async" />
-          </div>
-        </div>
-        <div className="obj hw-phone hw-side">
-          <div className="obj-screen">
-            <img src={SHOTS_304[SHOT304.lyrics].src} alt="" decoding="async" />
-          </div>
-        </div>
-        <div className="obj hw-phone hw-hero">
-          <div className="obj-screen">
-            <img src={SHOTS_304[SHOT304.home].src} alt="" decoding="async" />
-          </div>
-        </div>
-        <div className="obj hw-wrist">
-          <div className="hw-wrist-face">
-            <span className="hw-wrist-time">8:12</span>
-            <img src="/logo.png" alt="" decoding="async" />
-          </div>
-        </div>
-      </div>
-    </div>
   )
 }
 
@@ -561,35 +448,24 @@ export default function App() {
       <Bars active={section} onSelect={goToSection} />
 
       <main>
-        <Ribbon playing={ambient} onToggle={() => setAmbient((p) => !p)} />
-
-        <section className="block" id="overview">
-          <div className="shell statement center">
-            <p className="kicker reveal">{TAGLINE}</p>
-            <h1 className="headline reveal" style={{ '--d': '90ms' }}>
-              A music player
-              <br />
-              that breathes.
-            </h1>
-            <p className="lede reveal" style={{ '--d': '180ms' }}>
-              Live glass on every surface, lyrics that land on the beat, and
-              color that follows whatever is playing.
-              <br />
-              Open source, for Android 13 and newer.
-            </p>
-            <div className="linkrow reveal" style={{ '--d': '270ms' }}>
-              <a className="textlink" href={RELEASES} target="_blank" rel="noreferrer">
-                Get the APK <i>›</i>
-              </a>
-              <a className="textlink" href={REPO} target="_blank" rel="noreferrer">
-                Read the source <i>›</i>
-              </a>
-            </div>
-
-            <HeroDevice running={ambient} />
-          </div>
-        </section>
-
+        <KeyHero
+          id="overview"
+          version={LATEST_RELEASE.version.split('.').pop()}
+          fullVersion={LATEST_RELEASE.version}
+          line="Ultra fluid. Knows your music."
+          title="Ultra fluid. Knows your music."
+          body="Live glass on every surface, lyrics that land on the beat, and color that follows whatever is playing. Open source, for Android 13 and newer."
+          primary={
+            <a className="kh-pill" href={RELEASES} target="_blank" rel="noreferrer">
+              Download {LATEST_RELEASE.version}
+            </a>
+          }
+          secondary={
+            <Link className="kh-link" to={RELEASE_PATH}>
+              What’s new ›
+            </Link>
+          }
+        />
         <Highlights />
 
         <Film running={ambient} />

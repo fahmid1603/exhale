@@ -1,0 +1,342 @@
+/* ==========================================================================
+   Key visual hero, in the shape of OPPO's ColorOS 16 page.
+
+   --kp is the scroll through the section, 0..1. Two phases come out of it:
+   --ea closes the full-window visual into a disc (the first 45%), --eb
+   settles it: the disc shrinks and lifts, the screens around it clear and the
+   copy comes in under it (50% to 80%). Both are smoothstepped here, so the
+   script never does more than write one number.
+   ========================================================================== */
+
+.kh {
+  --kp: 0;
+  --kh-cover: 120vmax;
+  --kh-min: 100vmin;
+  --kh-lift: 16vh;
+  --a: clamp(0, calc(var(--kp) / 0.45), 1);
+  --b: clamp(0, calc((var(--kp) - 0.5) / 0.3), 1);
+  --ea: calc(var(--a) * var(--a) * (3 - 2 * var(--a)));
+  --eb: calc(var(--b) * var(--b) * (3 - 2 * var(--b)));
+  --r-big: calc(var(--kh-min) * 0.21);
+  --r-small: calc(var(--kh-min) * 0.105);
+  --r1: calc(var(--kh-cover) + (var(--r-big) - var(--kh-cover)) * var(--ea));
+  --r: calc(var(--r1) + (var(--r-small) - var(--r1)) * var(--eb));
+
+  position: relative;
+  height: 230vh;
+}
+
+.kh-stage {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+  background: #000;
+  isolation: isolate;
+}
+
+.kh-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------- the visual */
+
+.kh-kv {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  clip-path: circle(var(--r) at 50% 50%);
+  transform: translate3d(0, calc(var(--eb) * var(--kh-lift) * -1), 0);
+  will-change: clip-path, transform;
+}
+
+.kh-art {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 8% 30%, #2a1f7a 0%, #170f4a 40%, transparent 75%),
+    linear-gradient(160deg, #241a72 0%, #120b38 55%, #050310 100%);
+  transform: scale(calc(1 - 0.55 * var(--ea) - 0.2 * var(--eb)));
+  transform-origin: 50% 50%;
+}
+
+.kh-shape {
+  position: absolute;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  translate: -50% -50%;
+}
+
+/* The pale sheet across the top, lit from its lower edge. */
+.kh-shape-sky {
+  left: 62%;
+  top: -46%;
+  width: 150vmax;
+  background: radial-gradient(
+    circle at 50% 100%,
+    #e6e4ff 0%,
+    #a9adff 6%,
+    color-mix(in srgb, var(--iris) 85%, #fff) 13%,
+    var(--iris) 22%,
+    #3a2fb0 36%,
+    #1a1460 55%,
+    transparent 72%
+  );
+  box-shadow: 0 0 0 1px rgba(220, 220, 255, 0.35);
+}
+
+/* The cool sphere low on the right, black above it. */
+.kh-shape-moon {
+  left: 104%;
+  top: 92%;
+  width: 92vmax;
+  background: radial-gradient(
+    circle at 28% 22%,
+    #f2f2ff 0%,
+    #c9c6ff 12%,
+    color-mix(in srgb, var(--iris) 70%, #9ab4ff) 30%,
+    #3b3fb8 52%,
+    #0c0b30 78%
+  );
+  box-shadow:
+    inset 0 0 0 2px rgba(235, 235, 255, 0.55),
+    0 0 60px rgba(150, 150, 255, 0.35);
+}
+
+/* The warm sphere: the color of the app, from ember at its lit rim to almost black. */
+.kh-shape-sun {
+  left: 42%;
+  top: 128%;
+  width: 110vmax;
+  background: radial-gradient(
+    circle at 30% 14%,
+    #ffe1ea 0%,
+    color-mix(in srgb, var(--rose) 45%, #fff) 5%,
+    var(--rose) 13%,
+    color-mix(in srgb, var(--rose) 60%, #3a0418) 26%,
+    #22030f 44%,
+    #080106 64%
+  ),
+    radial-gradient(circle at 12% 30%, var(--ember), transparent 40%);
+  background-blend-mode: screen;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 214, 232, 0.75),
+    inset 0 18px 60px rgba(255, 180, 210, 0.35),
+    0 0 80px color-mix(in srgb, var(--rose) 40%, transparent);
+}
+
+.kh-mark {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  text-align: center;
+  transform: scale(calc(1 - 0.4 * var(--ea) - 0.25 * var(--eb)));
+  transform-origin: 50% 50%;
+}
+
+.kh-num {
+  margin: 0;
+  font-size: clamp(110px, 24vmin, 230px);
+  font-weight: 700;
+  line-height: 0.88;
+  letter-spacing: -0.055em;
+  font-variant-numeric: tabular-nums;
+  color: transparent;
+  background: linear-gradient(
+    172deg,
+    #ffffff 0%,
+    #ffe6f2 26%,
+    #f6c9e6 50%,
+    #dcbcff 74%,
+    #fff4fb 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: drop-shadow(0 12px 28px rgba(30, 0, 20, 0.5));
+}
+
+.kh-name {
+  margin: 0.32em 0 0;
+  font-size: clamp(44px, 7.5vmin, 72px);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: #ffe8f3;
+  text-shadow: 0 2px 18px rgba(40, 0, 25, 0.45);
+}
+
+.kh-line {
+  margin: 0.45em 0 0;
+  font-size: clamp(20px, 3vmin, 28px);
+  font-weight: 500;
+  color: #ffe8f3;
+  opacity: calc(1 - var(--ea) * 1.6);
+}
+
+/* ------------------------------------------------------------ the screens */
+
+.kh-devices {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.kh-dev {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: var(--w);
+  aspect-ratio: 720 / 1280;
+  border-radius: calc(var(--w) * 0.13);
+  padding: calc(var(--w) * 0.022);
+  background: #1c1c1f;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    0 30px 70px rgba(0, 0, 0, 0.6);
+  opacity: calc(var(--ea) * 0.5 + var(--eb) * 0.5);
+  filter: grayscale(calc(0.75 * (1 - var(--eb)))) brightness(calc(0.5 + 0.5 * var(--eb)));
+  transform: translate3d(0, calc((0.6 - var(--kp)) * 140px * var(--depth)), 0)
+    scale(calc(1.14 - 0.14 * var(--ea))) rotate(var(--rot));
+  will-change: transform, opacity, filter;
+}
+
+.kh-dev-wide {
+  aspect-ratio: 1280 / 720;
+  border-radius: calc(var(--w) * 0.05);
+  padding: calc(var(--w) * 0.012);
+}
+
+.kh-dev img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.kh-dev:not(.kh-dev-wide) img {
+  border-radius: calc(var(--w) * 0.11);
+}
+
+.kh-dev-wide img {
+  border-radius: calc(var(--w) * 0.04);
+}
+
+/* ---------------------------------------------------------------- the copy */
+
+.kh-copy {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: calc(50% - var(--kh-lift) + var(--r-small) + 30px);
+  width: min(500px, 100% - 48px);
+  translate: -50% 0;
+  text-align: center;
+  opacity: clamp(0, calc(var(--eb) * 2 - 1), 1);
+  transform: translate3d(0, calc((1 - var(--eb)) * 48px), 0);
+  pointer-events: none;
+}
+
+.kh[data-settled='true'] .kh-copy {
+  pointer-events: auto;
+}
+
+.kh-title {
+  margin: 0;
+  font-size: clamp(26px, 3.8vmin, 34px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.kh-body {
+  margin: 14px auto 0;
+  max-width: 340px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #c7c7cc;
+}
+
+.kh-actions {
+  margin-top: 22px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.kh-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 22px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #000;
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: transform 0.2s var(--ease), background 0.2s var(--ease);
+}
+
+.kh-pill:hover {
+  background: #fff;
+  transform: scale(1.03);
+}
+
+.kh-link {
+  color: var(--ink);
+  font-size: 15px;
+  text-decoration: none;
+}
+
+.kh-link:hover {
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------ smaller */
+
+@media (max-width: 760px) {
+  .kh-dev-top,
+  .kh-dev-far {
+    display: none;
+  }
+
+  .kh-dev {
+    --w: 34vw !important;
+  }
+
+  .kh-dev-wide {
+    --w: 64vw !important;
+    top: 72% !important;
+    left: -18% !important;
+  }
+
+  .kh-copy {
+    width: min(360px, 100% - 32px);
+  }
+}
+
+/* Reduced motion: no hold, the settled frame as a plain section. */
+.kh[data-static='true'] {
+  height: auto;
+}
+
+.kh[data-static='true'] .kh-stage {
+  position: relative;
+  height: max(100svh, 720px);
+}
+
+.kh[data-static='true'] .kh-copy {
+  pointer-events: auto;
+}
