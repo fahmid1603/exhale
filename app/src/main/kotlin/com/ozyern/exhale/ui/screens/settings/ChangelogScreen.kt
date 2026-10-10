@@ -34,6 +34,8 @@ import com.ozyern.exhale.ui.utils.backToMain
 import com.ozyern.exhale.utils.NightlyInfo
 import com.ozyern.exhale.utils.ReleaseInfo
 import com.ozyern.exhale.utils.Updater
+import com.ozyern.exhale.utils.VersionChangelog
+import androidx.compose.foundation.clickable
 import com.ozyern.exhale.utils.dataStore
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -108,6 +110,17 @@ fun ChangelogScreen(
         }
     }
 
+    // Each version's own notes: this build's first, then every earlier one, from the files the
+    // APK carries — readable offline. The copies on GitHub replace them as they arrive, so a fix
+    // to a version's notes reaches everyone without an update.
+    var versionNotes by remember { mutableStateOf(VersionChangelog.all(context)) }
+    LaunchedEffect(Unit) {
+        val refreshed = versionNotes.map { entry ->
+            VersionChangelog.remote(entry.version)?.let { entry.copy(markdown = it) } ?: entry
+        }
+        versionNotes = refreshed
+    }
+
     // Cargar datos iniciales cuando el canal cambie
     LaunchedEffect(updateChannel) {
         isLoading = true
@@ -158,6 +171,25 @@ fun ChangelogScreen(
                 )
         ) {
             when {
+                // Stable builds read their own notes, bundled, so there is nothing to wait for.
+                updateChannel == UpdateChannel.STABLE && versionNotes.isNotEmpty() -> {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        item { Spacer(modifier = Modifier.height(8.dp + paddingValues.calculateTopPadding())) }
+                        items(versionNotes, key = { it.version }) { entry ->
+                            VersionNotesCard(
+                                entry = entry,
+                                isCurrent = Updater.isSameVersion(entry.version, VersionChangelog.currentVersion),
+                            )
+                        }
+                        item { Spacer(modifier = Modifier.height(8.dp)) }
+                    }
+                }
+
                 isLoading -> {
                     LoadingRing(
                         modifier = Modifier.align(Alignment.Center)
@@ -302,6 +334,59 @@ private fun NightlyChangelogCard(nightlyInfo: NightlyInfo) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        }
+    }
+}
+
+/**
+ * One version's notes. The version this build is opens by itself and says so; earlier versions
+ * start folded to their first paragraph and open on a tap.
+ */
+@Composable
+private fun VersionNotesCard(entry: VersionChangelog.Entry, isCurrent: Boolean) {
+    var open by remember(entry.version) { mutableStateOf(isCurrent) }
+    // The file's own "# Exhale x.y.z" heading is the card's title; the body is the rest.
+    val body = remember(entry.markdown) {
+        entry.markdown.lines().dropWhile { it.isBlank() }.let { lines ->
+            if (lines.firstOrNull()?.startsWith("# ") == true) lines.drop(1) else lines
+        }.joinToString("\n").trim()
+    }
+    val preview = remember(body) {
+        body.split(Regex("\n\\s*\n")).firstOrNull { it.isNotBlank() && !it.trimStart().startsWith("_") }.orEmpty()
+    }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = !isCurrent) { open = !open },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isCurrent) 0.45f else 0.3f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Exhale ${entry.version}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = if (isCurrent) "This version" else if (open) "Hide" else "Show",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            MarkdownText(
+                markdown = if (open) body else preview,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }
