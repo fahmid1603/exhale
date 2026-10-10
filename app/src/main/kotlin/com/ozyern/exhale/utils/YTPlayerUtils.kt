@@ -8,6 +8,7 @@
 
 package com.ozyern.exhale.utils
 
+import kotlinx.coroutines.sync.withLock
 import android.net.ConnectivityManager
 import androidx.media3.common.PlaybackException
 import com.ozyern.exhale.constants.AudioCodec
@@ -358,7 +359,54 @@ object YTPlayerUtils {
             if (attemptResult.isSuccess) return@runCatching attemptResult.getOrThrow()
             lastError = attemptResult.exceptionOrNull()
         }
+
+        // Every client answered with the bot check. That verdict is on the visitor session as much
+        // as the address: the same id keeps getting it for every song after, so the player skipped
+        // song after song ("Couldn't play X") while a fresh session would have been let through.
+        // Signed out and with no poToken bound to the id, mint a new one and ask once more.
+        if (lastError != null && isBotDetectionThrowable(lastError) && remintVisitorSession()) {
+            Timber.tag(logTag).w("Bot check on every client for $videoId; retrying on a fresh visitor session")
+            return@runCatching playerResponseForPlaybackOnce(
+                videoId = videoId,
+                playlistId = playlistId,
+                audioQuality = attempts.first(),
+                connectivityManager = connectivityManager,
+                preferredStreamClient = preferredStreamClient,
+                networkMetered = networkMetered,
+                avoidCodecs = avoidCodecs,
+                preferredCodec = preferredCodec,
+            )
+        }
         throw lastError ?: IllegalStateException("Failed to resolve stream")
+    }
+
+    /** Set by the app to keep a re-minted visitor id across restarts. */
+    @Volatile var onVisitorSessionReminted: ((String) -> Unit)? = null
+    @Volatile private var lastRemintAt = 0L
+    private val remintLock = kotlinx.coroutines.sync.Mutex()
+
+    /**
+     * A new visitor id, at most once every few minutes, and never under credentials: a cookie
+     * session is the account's own, and a poToken is bound to the id it was minted for.
+     */
+    private suspend fun remintVisitorSession(): Boolean = remintLock.withLock {
+        if (YouTube.cookie != null || !YouTube.poToken.isNullOrBlank()) return@withLock false
+        val now = System.currentTimeMillis()
+        if (now - lastRemintAt < 3 * 60_000L) return@withLock now - lastRemintAt < 15_000L // another song just did it
+        lastRemintAt = now
+        val fresh = YouTube.visitorData().getOrNull()?.takeIf { it.isNotBlank() } ?: return@withLock false
+        YouTube.visitorData = fresh
+        onVisitorSessionReminted?.invoke(fresh)
+        true
+    }
+
+    private fun isBotDetectionThrowable(error: Throwable): Boolean {
+        var cause: Throwable? = error
+        while (cause != null) {
+            if (isBotDetectionError(cause.message.orEmpty())) return true
+            cause = cause.cause
+        }
+        return false
     }
 
     private suspend fun playerResponseForPlaybackOnce(

@@ -313,6 +313,13 @@ class App : Application(), SingletonImageLoader.Factory {
                 }
         }
 
+        // The player mints a fresh visitor id when YouTube bot-checks every client; keep it.
+        com.ozyern.exhale.utils.YTPlayerUtils.onVisitorSessionReminted = { fresh ->
+            applicationScope.launch(Dispatchers.IO) {
+                dataStore.edit { settings -> settings[VisitorDataKey] = fresh }
+            }
+        }
+
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
                 .map { it[VisitorDataKey] }
