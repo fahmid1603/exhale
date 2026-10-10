@@ -1135,6 +1135,17 @@ class MainActivity : ComponentActivity() {
                     val isSearchResultsRoute =
                         navBackStackEntry?.destination?.route?.startsWith("search/") == true
 
+                    // Where the Search page's field sits (Appearance > Search > Search bar): docked at
+                    // the bottom by default, or at the top — on the Search tab, while typing and on
+                    // results pages, with the ordinary dock back at the bottom. It used to move only
+                    // the Settings page's field, so in Search it did nothing; Settings no longer reads it.
+                    val (searchFieldPosition) = rememberEnumPreference(
+                        com.ozyern.exhale.constants.SettingsSearchPositionKey,
+                        com.ozyern.exhale.constants.SettingsSearchPosition.BOTTOM,
+                    )
+                    val searchFieldAtTop = searchFieldPosition == com.ozyern.exhale.constants.SettingsSearchPosition.TOP
+                    val onSearchTabRoute = navBackStackEntry?.destination?.route == Screens.Search.route
+
                     // Everywhere except Home, the collapsed player is the *slim* pill rather
                     // than the full-height one.
                     //
@@ -1946,7 +1957,9 @@ class MainActivity : ComponentActivity() {
                                     // come" behaviour. Results now keep the field docked at the
                                     // bottom via `SearchBottomBar` in the bottomBar slot below.
                                     AnimatedVisibility(
-                                        visible = active,
+                                        // With the field set to sit at the top, it rests there on the
+                                        // Search tab and on results pages too, not only while typing.
+                                        visible = active || (searchFieldAtTop && (onSearchTabRoute || isSearchResultsRoute)),
                                         enter = fadeIn(animationSpec = tween(durationMillis = 300)),
                                         exit = fadeOut(animationSpec = tween(durationMillis = 200))
                                     ) {
@@ -2092,7 +2105,9 @@ class MainActivity : ComponentActivity() {
                                             // Apple-Music search: dock the input pill at the bottom of the
                                             // screen, floating above the system nav bar. The mini-player sits
                                             // above it (handled by the bottomBar/BottomSheetPlayer stack).
-                                            inputAtBottom = true,
+                                            // Unless the Search bar setting puts it at the top, where it
+                                            // then stays while typing as well.
+                                            inputAtBottom = !searchFieldAtTop,
                                             bottomBarPadding = bottomInset + floatingBarsBottomPadding,
                                         ) {
                                             Crossfade(
@@ -2422,7 +2437,7 @@ class MainActivity : ComponentActivity() {
                                                         // most expensive thing drawn in the transition; it is fading out anyway.
                                                     },
                                         ) {
-                                            if ((isSearchScreen || isSearchResultsRoute) && !active) {
+                                            if ((isSearchScreen || isSearchResultsRoute) && !active && !searchFieldAtTop) {
                                                 // ---- SEARCH LAYOUT: fixed frosted bar row ----
                                                 // Leading circle in its OWN round pill + search
                                                 // input in its own capsule; NO A/B morphing. The

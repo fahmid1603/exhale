@@ -804,8 +804,9 @@ fun AppearanceSettings(
             }
         }
 
+        // Where the Search page's field sits, browsing, typing and on results.
         PreferenceGroupTitle(
-            title = "Settings page",
+            title = "Search",
         )
         PreferenceGroup {
             EnumListPreference(

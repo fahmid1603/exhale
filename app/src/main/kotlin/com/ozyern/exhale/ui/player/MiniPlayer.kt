@@ -9,7 +9,6 @@
 package com.ozyern.exhale.ui.player
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,9 +33,7 @@ import com.ozyern.exhale.constants.MiniPlayerHeight
 import com.ozyern.exhale.constants.MiniPlayerPillCornerRadius
 import com.ozyern.exhale.constants.SwipeSensitivityKey
 import com.ozyern.exhale.ui.component.BottomSheetState
-import com.ozyern.exhale.ui.component.MiniPlayerGlassBlurRadius
-import com.ozyern.exhale.ui.component.MiniPlayerGlassExtraTint
-import com.ozyern.exhale.ui.component.rememberChromeGlassModifier
+import com.ozyern.exhale.ui.component.miniPlayerGlass
 import com.ozyern.exhale.utils.rememberPreference
 import kotlin.math.roundToInt
 
@@ -131,21 +128,11 @@ private fun NewMiniPlayer(
             // the re-entrant layer draw that in-content glass would be.
             Box(
                 modifier = barModifier
-                    .then(
-                        rememberChromeGlassModifier(
-                            shape = shape,
-                            dark = isSystemInDarkTheme(),
-                            // Verbatim from `LiquidGlassBottomBar.frostedGlassModifier`. Copied
-                            // rather than shared because that one is private to the bar; if
-                            // either moves, they must move together.
-                            // Frosted past the dock's strength on purpose: the song title sits on
-                            // this pane, and at the dock's blur a page heading scrolling underneath
-                            // stayed readable and collided with it.
-                            tintAlpha = (if (isSystemInDarkTheme()) 0.30f else 0.26f) + MiniPlayerGlassExtraTint,
-                            blurRadius = MiniPlayerGlassBlurRadius,
-                            quality = 0.5f,
-                        ),
-                    )
+                    // Clear liquid glass, as Apple's mini player is: a light blur, the page's
+                    // colour lifted through it and bent hard at the rim, under a 40% film. It was
+                    // the frosted chrome glass with a 76% black film on top — a dark slab with the
+                    // glass buried under it. The film still keeps the title legible over a page.
+                    .miniPlayerGlass(shape = shape)
                     // `drawBackdrop` paints the pane; it does not clip what is drawn on top of
                     // it. Without this the progress hairline runs straight out past the capsule's
                     // rounded ends.

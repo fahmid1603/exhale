@@ -74,11 +74,9 @@ fun SettingsScreen(
     var isSearching by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf(TextFieldValue()) }
     val focusRequester = remember { FocusRequester() }
-    val (searchPosition) = com.ozyern.exhale.utils.rememberEnumPreference(
-        com.ozyern.exhale.constants.SettingsSearchPositionKey,
-        com.ozyern.exhale.constants.SettingsSearchPosition.BOTTOM,
-    )
-    val searchAtTop = searchPosition == com.ozyern.exhale.constants.SettingsSearchPosition.TOP
+    // Settings keeps its field at the foot of the page. The Search bar setting moves the field on
+    // the Search page only; it used to move this one instead and leave Search untouched.
+    val searchAtTop = false
 
 
     val storagePermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

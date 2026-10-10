@@ -176,6 +176,35 @@ fun Modifier.clearGlass(
 private const val ClearGlassFilm = 0.40f
 
 /**
+ * The mini player's glass: the dock's own film, saturation and rim bend — so the pill and the dock
+ * under it are one material, as on iOS 26 — with enough blur that a page heading sliding under the
+ * song title turns to colour rather than letters. At the dock's 2dp the title collided with the
+ * row beneath it; at the old frosted 32dp under a 76% film there was no glass left to see.
+ */
+@Composable
+fun Modifier.miniPlayerGlass(
+    shape: Shape,
+    backdrop: Backdrop = LocalAppBackdrop.current,
+    dark: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
+): Modifier {
+    val film = if (dark) Color(0xFF3A3A3E).copy(alpha = 0.40f) else Color(0xFFFAFAFA).copy(alpha = 0.50f)
+    return this.drawBackdrop(
+        backdrop = backdrop,
+        shape = { shape },
+        effects = {
+            colorControls(saturation = 1.6f)
+            blur(9f.dp.toPx())
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                lens(19f.dp.toPx(), 29f.dp.toPx())
+            }
+        },
+        highlight = { Highlight.Default.copy(width = 0.8f.dp, alpha = 0.5f) },
+        shadow = { Shadow() },
+        onDrawSurface = { drawRect(film) },
+    )
+}
+
+/**
  * The dock's glass, in both of its states: almost no frost, so the page reads straight through,
  * with the colour behind it lifted, a deep bend at the rim and a darker film than [clearGlass].
  * The bar sits over everything, so it has to look like a lens over the page, not a panel on it.

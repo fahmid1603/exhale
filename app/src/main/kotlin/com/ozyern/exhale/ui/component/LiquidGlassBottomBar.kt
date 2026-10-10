@@ -602,8 +602,12 @@ private val DockGlassBlurRadius = 68.dp
  * The now-playing pill's glass. Text lives on it that page text must never be read through, so it
  * is frosted to the point where a heading passing under it is colour, not letters (the radius is
  * quartered by the chrome modifier, so this is ~28dp of real blur).
+ *
+ * The blur is what does that, not the tint: at 0.46 extra (a 76% black film in dark mode) the pill
+ * was a slab with the glass buried under it — the page's colour, the lens at the rim, none of it
+ * showed. A light film over the same heavy blur keeps letters unreadable and lets it be glass.
  */
-internal const val MiniPlayerGlassExtraTint = 0.46f
+internal const val MiniPlayerGlassExtraTint = 0.12f
 internal val MiniPlayerGlassBlurRadius = 130.dp
 
 @Composable
