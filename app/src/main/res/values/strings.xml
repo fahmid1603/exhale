@@ -1052,4 +1052,21 @@ Exhale will only extract your token, and everything else is stored locally.</str
         <item>Finding the right words</item>
         <item>Almost found the words</item>
     </string-array>
+<!-- Download queue -->
+    <string name="dq_section_now">Downloading</string>
+    <string name="dq_section_next">Up next</string>
+    <string name="dq_section_failed">Couldn’t download</string>
+    <string name="dq_headline_downloading">Downloading</string>
+    <string name="dq_headline_starting">Starting</string>
+    <string name="dq_headline_paused">Paused</string>
+    <string name="dq_headline_holding">Taking a breather</string>
+    <string name="dq_headline_failed">Some songs didn’t download</string>
+    <string name="dq_done_of">%1$d of %2$d done</string>
+    <string name="dq_failed_count">%d failed</string>
+    <string name="dq_holding_note">YouTube asked for a slower pace. Carrying on in %d s.</string>
+    <string name="dq_resume">Resume</string>
+    <string name="dq_retry_failed">Retry failed</string>
+    <string name="dq_clear">Clear</string>
+    <string name="dq_size_progress">%1$s of %2$s</string>
+    <string name="dq_waiting">Waiting</string>
 </resources>

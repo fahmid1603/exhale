@@ -10,6 +10,7 @@ package com.ozyern.exhale.playback
 
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.withLock
 import android.content.Context
 import android.media.MediaCodecList
 import android.net.ConnectivityManager
@@ -151,18 +152,7 @@ constructor(
                 // The length of *this* stream, never the shared format row, which playback rewrites.
                 return@Factory bounded(dataSpec.withUri(it.first.toUri()), mediaId, it.third, useStoredLength = false)
             }
-            val playbackData = runBlocking(Dispatchers.IO) {
-                val networkMeteredPref = context.dataStore.get(NetworkMeteredKey, false)
-                YTPlayerUtils.playerResponseForPlayback(
-                    mediaId,
-                    audioQuality = audioQuality,
-                    preferredStreamClient = preferredStreamClient,
-                    connectivityManager = connectivityManager,
-                    networkMetered = networkMeteredPref,
-                    avoidCodecs = avoidStreamCodecs,
-                    preferredCodec = preferredAudioCodec,
-                )
-            }.getOrThrow()
+            val playbackData = runBlocking(Dispatchers.IO) { resolveForDownload(context, mediaId) }
             val format = playbackData.format
 
             database.query {
@@ -208,6 +198,72 @@ constructor(
             )
             bounded(dataSpec.withUri(streamUrl.toUri()), mediaId, format.contentLength?.takeIf { it > 0 }, useStoredLength = false)
         }
+
+    /**
+     * One player request for downloads at a time, spaced out, and quiet for a while after a refusal.
+     *
+     * Every download starts by asking YouTube for a fresh player response, and at the highest
+     * quality that one question goes to every stream client at once. Five songs starting together
+     * was dozens of player calls in the same second from one address, which is exactly what
+     * YouTube's bot check looks for: an album of twelve got through, a 93-song playlist got two,
+     * the rest refused with "Sign in to confirm you're not a bot" until the manager gave up on them.
+     *
+     * So the downloads still transfer five at a time — that part is just bytes from googlevideo —
+     * but they take turns asking, with a gap between turns. When YouTube does refuse, nobody asks
+     * again until a cool-down has passed, doubling with each refusal in a row, and the song that was
+     * refused waits it out and asks again rather than failing.
+     */
+    private val resolveGate = kotlinx.coroutines.sync.Mutex()
+    @Volatile private var lastResolveAt = 0L
+    @Volatile private var cooldownUntil = 0L
+    @Volatile private var refusalsInARow = 0
+
+    /** When downloads may next ask YouTube for a stream, if they are being held back; 0 when not. */
+    val resolveHoldUntil = MutableStateFlow(0L)
+
+    private suspend fun resolveForDownload(context: Context, mediaId: String): YTPlayerUtils.PlaybackData {
+        var refused = 0
+        while (true) {
+            val result = resolveGate.withLock {
+                val wait = maxOf(cooldownUntil, lastResolveAt + RESOLVE_SPACING_MS) - System.currentTimeMillis()
+                if (wait > 0) delay(wait)
+                try {
+                    YTPlayerUtils.playerResponseForPlayback(
+                        mediaId,
+                        audioQuality = audioQuality,
+                        preferredStreamClient = preferredStreamClient,
+                        connectivityManager = connectivityManager,
+                        networkMetered = context.dataStore.get(NetworkMeteredKey, false),
+                        avoidCodecs = avoidStreamCodecs,
+                        preferredCodec = preferredAudioCodec,
+                    )
+                } finally {
+                    lastResolveAt = System.currentTimeMillis()
+                }
+            }
+            result.onSuccess {
+                refusalsInARow = 0
+                return it
+            }
+            val error = result.exceptionOrNull()!!
+            if (!isBotCheck(error) || ++refused > MAX_REFUSALS_PER_SONG) throw error
+            refusalsInARow++
+            val pause = (BOT_COOLDOWN_MS shl (refusalsInARow - 1).coerceAtMost(4)).coerceAtMost(MAX_BOT_COOLDOWN_MS)
+            cooldownUntil = maxOf(cooldownUntil, System.currentTimeMillis() + pause)
+            resolveHoldUntil.value = cooldownUntil
+            timber.log.Timber.tag("DownloadUtil").w("Bot check while resolving $mediaId; holding downloads for ${pause / 1000}s")
+        }
+    }
+
+    private fun isBotCheck(error: Throwable): Boolean {
+        var cause: Throwable? = error
+        while (cause != null) {
+            val text = cause.message.orEmpty().lowercase()
+            if ("bot" in text || "unusual traffic" in text || ("confirm" in text && "not a" in text)) return true
+            cause = cause.cause
+        }
+        return false
+    }
 
     /**
      * Ask for a byte range rather than for "the file".
@@ -337,5 +393,15 @@ constructor(
                 !info.isEncoder && info.supportedTypes.any { it.equals(mimeType, ignoreCase = true) }
             }
         }.getOrDefault(false)
+    }
+
+    private companion object {
+        /** The gap between two downloads asking YouTube for a stream. */
+        const val RESOLVE_SPACING_MS = 1_500L
+        /** The first cool-down after a bot check; it doubles with each refusal in a row. */
+        const val BOT_COOLDOWN_MS = 20_000L
+        const val MAX_BOT_COOLDOWN_MS = 4 * 60_000L
+        /** How many cool-downs one song sits through before it is allowed to fail. */
+        const val MAX_REFUSALS_PER_SONG = 6
     }
 }

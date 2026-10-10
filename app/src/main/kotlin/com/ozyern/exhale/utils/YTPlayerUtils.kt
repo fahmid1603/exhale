@@ -606,6 +606,7 @@ object YTPlayerUtils {
                 format = selectedFormat
                 streamUrl = selectedUrl
                 streamExpiresInSeconds = streamPlayerResponse.streamingData?.expiresInSeconds
+                    ?: expirySecondsFromUrl(selectedUrl)
 
                 if (streamExpiresInSeconds == null) continue
 
@@ -739,6 +740,10 @@ object YTPlayerUtils {
                     PlaybackException.ERROR_CODE_REMOTE_ERROR
                 )
             }
+
+            // A stream that works but came without expiresInSeconds was being thrown away - a song
+            // that would have played, failed. Its URL carries its own expiry; read it from there.
+            if (streamExpiresInSeconds == null) streamExpiresInSeconds = streamUrl?.let(::expirySecondsFromUrl)
 
             if (streamExpiresInSeconds == null) {
                 Timber.tag(logTag).e("Missing stream expire time")
@@ -1209,6 +1214,13 @@ object YTPlayerUtils {
         }
 
         return url
+    }
+
+    /** Seconds until a googlevideo URL stops working, from its own `expire` stamp; six hours when it has none. */
+    private fun expirySecondsFromUrl(url: String): Int {
+        val expireAt = url.toHttpUrlOrNull()?.queryParameter("expire")?.toLongOrNull()
+        val left = expireAt?.let { it - System.currentTimeMillis() / 1000 }
+        return (left ?: 21_600L).coerceIn(60L, 21_600L).toInt()
     }
 
     private fun buildCacheKey(videoId: String, itag: Int): String {
