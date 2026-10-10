@@ -9,8 +9,9 @@
 
 import { RELEASE } from './release.js'
 import { RELEASE_304 } from './release304.js'
+import { RELEASE_405 } from './release405.js'
 
-export const ALL_RELEASES = [RELEASE_304, RELEASE]
+export const ALL_RELEASES = [RELEASE_405, RELEASE_304, RELEASE]
 
 export const LATEST_RELEASE = ALL_RELEASES[0]
 

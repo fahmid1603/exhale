@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import App from './App.jsx'
 import Release from './pages/Release.jsx'
+import ReleaseColorOS from './pages/ReleaseColorOS.jsx'
 import Support from './pages/Support.jsx'
 import { releaseByVersion } from './releases.js'
 import { useRoute } from './router.jsx'
@@ -80,7 +81,12 @@ export default function Site() {
   // Keyed by version: moving from one release to another is a different page,
   // so it starts at the top with its own hero and its own reveals, rather than
   // swapping the text inside whatever the last one had scrolled to.
-  if (page === 'release') return <Release release={release} key={release.version} />
+  if (page === 'release') {
+    // 1.0.405 onwards are laid out like OPPO's ColorOS release pages; the earlier
+    // announcements keep the document they were written as.
+    if (release.layout === 'coloros') return <ReleaseColorOS release={release} key={release.version} />
+    return <Release release={release} key={release.version} />
+  }
   if (page === 'support') return <Support />
   return <App />
 }
