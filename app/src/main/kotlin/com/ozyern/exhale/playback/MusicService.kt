@@ -6424,8 +6424,11 @@ class MusicService :
                     ObjectOutputStream(fos).use { output ->
                         output.writeObject(payload)
                         output.flush()
+                        // Inside the block: closing the object stream closes the file too, and a
+                        // sync after that threw every time — so the save was thrown away, and the
+                        // queue never came back after Android killed the app.
+                        fos.fd.sync()
                     }
-                    fos.fd.sync()
                 }
 
                 if (persistentFile.exists() && !persistentFile.delete()) {
