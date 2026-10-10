@@ -932,7 +932,7 @@ internal fun NowPlayingScreen(
         // The cover's own dissolve used to run across the bottom of the picture, which left the
         // video see-through with the player's background showing in it.
         val video = musicVideo
-        val videoTopPx = with(density) { (statusBarTop + TOP_STRIP_HEIGHT).toPx() }
+        var pictureBottomPx by remember { mutableFloatStateOf(0f) }
         val videoAspect = video?.stream?.let { if (it.width > 0 && it.height > 0) it.width.toFloat() / it.height else null } ?: (16f / 9f)
         if (videoMode && video != null && heroHeight > 0.dp && !collapsePastHalf && !videoFullscreen) {
             Box(
@@ -948,7 +948,7 @@ internal fun NowPlayingScreen(
                         // Black only once the picture is there; until then the cover shows through.
                         if (videoShown) drawRect(Color.Black)
                         drawContent()
-                        val pictureBottom = videoTopPx + size.width / videoAspect
+                        val pictureBottom = pictureBottomPx - screenOrigin.y
                         val start = maxOf(pictureBottom, size.height * (1f - HERO_FADE_FRACTION))
                         if (start < size.height) {
                             drawRect(
@@ -980,36 +980,11 @@ internal fun NowPlayingScreen(
                         android.widget.Toast.makeText(context, "Couldn't play this video", android.widget.Toast.LENGTH_SHORT).show()
                     },
                     alignment = Alignment.TopCenter,
+                    onPictureBottom = { pictureBottomPx = it },
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(top = statusBarTop + TOP_STRIP_HEIGHT),
                 )
-                // Full screen: the one place the video is a player, with its controls.
-                if (videoShown) {
-                    val pictureHeight = statusBarTop + TOP_STRIP_HEIGHT +
-                        androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp / videoAspect
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .offset { IntOffset(0, (pictureHeight - 44.dp).roundToPx()) }
-                            .padding(end = 10.dp)
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.45f))
-                            .clickable {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                videoFullscreen = true
-                            },
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.fullscreen),
-                            contentDescription = "Full screen",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
             }
         }
         if (videoFullscreen && video != null) {
@@ -1090,6 +1065,31 @@ internal fun NowPlayingScreen(
                 }
                 // Song ⇄ Video, as Apple Music offers it: only while the cover is the screen, and
                 // gone for a song we already know has no video.
+                // Full screen, opposite the switch: the one place the video is a player, with its
+                // controls. In this strip because it takes touches; over the picture, the player's
+                // own gestures took them first.
+                if (videoMode && videoShown && musicVideo != null && !collapsePastSettling) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 14.dp)
+                            .size(30.dp)
+                            .playerGlass(CircleShape)
+                            .clip(CircleShape)
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                videoFullscreen = true
+                            },
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.fullscreen),
+                            contentDescription = "Full screen",
+                            tint = Color.White,
+                            modifier = Modifier.size(17.dp),
+                        )
+                    }
+                }
                 if (videoFound && !videoMissing && !collapsePastSettling) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,

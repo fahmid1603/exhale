@@ -14,6 +14,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -45,6 +47,30 @@ fun Modifier.scrollEdgeScrim(color: Color, visibility: () -> Float): Modifier =
 }
 
 private const val ScrollEdgeGround = false
+
+/**
+ * Content that scrolls up into the top bar fades away instead of running under the logo — a
+ * fade of the content itself, not a band of colour laid over it, so what shows there is whatever
+ * is behind the page (the moving artwork), exactly as at rest. [height] is the bar's bottom edge.
+ */
+fun Modifier.topEdgeFade(height: () -> Float): Modifier = this
+    .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val h = height()
+        if (h <= 0f) return@drawWithContent
+        val end = h + 14.dp.toPx()
+        drawRect(
+            brush = Brush.verticalGradient(
+                0f to Color.Transparent,
+                (h * 0.55f / end) to Color.Transparent,
+                1f to Color.Black,
+                endY = end,
+            ),
+            size = Size(size.width, end),
+            blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+        )
+    }
 
 /** How far below a bar its scroll edge fades out. */
 val ScrollEdgeTail = 28.dp

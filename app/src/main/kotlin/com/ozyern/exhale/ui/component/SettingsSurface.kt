@@ -20,6 +20,10 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.graphics.graphicsLayer
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
 
 /**
  * The Apple-Music "inset grouped table" palette, in one place.
@@ -140,12 +144,40 @@ fun Modifier.settingsGlassGroup(
         1f to Color.Transparent,
     )
 
+    val floor = settingsGroupSurfaceColor().copy(alpha = 0.72f)
+    val border = settingsGroupBorderBrush()
+    // Glass of the wash behind it where the page records one: bent at the rim and softened, under
+    // the same tonal floor so dense rows of text stay as legible as on the flat card.
+    val pageBackdrop = com.ozyern.exhale.ui.component.liquid.LocalPageBackdrop.current
+    val inDialog = androidx.compose.ui.platform.LocalView.current.parent is androidx.compose.ui.window.DialogWindowProvider
+    if (pageBackdrop != null && !inDialog) {
+        return this
+            .drawBackdrop(
+                backdrop = pageBackdrop,
+                shape = { shape },
+                effects = {
+                    vibrancy()
+                    blur(10f.dp.toPx())
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        lens(16f.dp.toPx(), 32f.dp.toPx(), true)
+                    }
+                },
+                highlight = { com.kyant.backdrop.highlight.Highlight.Default.copy(alpha = 0.45f) },
+                onDrawSurface = {
+                    drawRect(floor)
+                    drawRect(fill)
+                    drawRect(sheen)
+                },
+            )
+            .border(width = 0.8.dp, brush = border, shape = shape)
+    }
+
     return this
         .clip(shape)
-        .background(settingsGroupSurfaceColor().copy(alpha = 0.72f))
+        .background(floor)
         .background(fill)
         .background(sheen)
-        .border(width = 0.8.dp, brush = settingsGroupBorderBrush(), shape = shape)
+        .border(width = 0.8.dp, brush = border, shape = shape)
 }
 
 /**

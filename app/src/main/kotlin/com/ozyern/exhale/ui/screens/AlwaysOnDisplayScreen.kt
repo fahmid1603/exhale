@@ -285,7 +285,13 @@ fun AlwaysOnDisplayScreen(navController: NavController) {
     val lyricsEntity by playerConnection.currentLyrics.collectAsState(initial = null)
     val lyricLines = remember(lyricsEntity?.lyrics, showLyrics) {
         val text = lyricsEntity?.lyrics?.takeIf { showLyrics && it.isNotBlank() && it != com.ozyern.exhale.db.entities.LyricsEntity.LYRICS_NOT_FOUND }
-        text?.let { runCatching { com.ozyern.exhale.lyrics.LyricsUtils.parseLyrics(it) }.getOrNull() }
+        // Word-timed lyrics are TTML, the rest LRC: the same split the player's lyric line makes.
+        text?.let {
+            runCatching {
+                if (com.ozyern.exhale.lyrics.LyricsUtils.isTtml(it)) com.ozyern.exhale.lyrics.LyricsUtils.parseTtml(it)
+                else com.ozyern.exhale.lyrics.LyricsUtils.parseLyrics(it)
+            }.getOrNull()
+        }
             ?.filter { it.text.isNotBlank() }
             // Timed lyrics only: plain text has no "now" to show.
             ?.takeIf { lines -> lines.size > 1 && lines.any { it.time > 0L } }

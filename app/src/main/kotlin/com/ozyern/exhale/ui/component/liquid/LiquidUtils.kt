@@ -81,7 +81,16 @@ fun rememberAppBackdrop(): LayerBackdrop = rememberLayerBackdrop()
  * [LocalAppBackdrop].
  */
 @Composable
-fun rememberInContentBackdrop(): Backdrop = rememberCanvasBackdrop { /* Nothing to refract. */ }
+fun rememberInContentBackdrop(): Backdrop {
+    // The page's recorded ground when there is one: it is drawn *beneath* the content as a
+    // sibling, so sampling it is legal where the NavHost recording is not — and it is what turns a
+    // tinted capsule into glass that visibly bends the artwork behind it. Not from a dialog's own
+    // window, where the activity's recording would be misplaced.
+    val page = LocalPageBackdrop.current
+    val inDialog = androidx.compose.ui.platform.LocalView.current.parent is androidx.compose.ui.window.DialogWindowProvider
+    val empty = rememberCanvasBackdrop { /* Nothing to refract. */ }
+    return if (page != null && !inDialog) page else empty
+}
 
 // Gesture inspector for interactive highlights and drag animations
 internal suspend fun PointerInputScope.inspectDragGestures(

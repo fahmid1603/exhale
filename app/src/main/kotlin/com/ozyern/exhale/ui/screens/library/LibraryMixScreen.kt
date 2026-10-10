@@ -6,6 +6,12 @@
 
 package com.ozyern.exhale.ui.screens.library
 
+import com.ozyern.exhale.extensions.toMediaItem
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -287,51 +293,66 @@ fun LibraryMixScreen(
                 LibraryLargeTitle()
             }
 
-            // ── Destinations: a 2×2 of tiles rather than a settings-style list ──
-            item(key = "categories", contentType = "categories") {
-                val destinations = buildList {
-                    add(Triple(stringResource(R.string.filter_playlists), R.drawable.queue_music) { onTabSelected(LibraryFilter.PLAYLISTS) })
-                    add(Triple(stringResource(R.string.filter_artists), R.drawable.person) { onTabSelected(LibraryFilter.ARTISTS) })
-                    add(Triple(stringResource(R.string.filter_albums), R.drawable.album) { onTabSelected(LibraryFilter.ALBUMS) })
-                    add(Triple(stringResource(R.string.filter_songs), R.drawable.music_note) { onTabSelected(LibraryFilter.SONGS) })
-                    if (showSpotifyPlaylists && spotifyPlaylists.isNotEmpty()) {
-                        add(Triple(stringResource(R.string.spotify), R.drawable.spotify_icon) { onTabSelected(LibraryFilter.SPOTIFY) })
-                    }
-                }
-                LibraryDestinationGrid(destinations = destinations, gutter = LibraryGutter)
-            }
-
-            // ── Your collections: a colour each and a glyph ──
+            // ── Your collections: Liked as the lead card, the rest as glass tiles under it ──
             if (pinned.isNotEmpty()) {
-                item(key = "pinned", contentType = "pinned") {
-                    Column {
-                        LibraryShelfHeader(title = "Collections", gutter = LibraryGutter, onShowAll = null)
-                        LibraryCollectionsRow(
-                            cards = pinned.map { entry ->
-                                CollectionCard(
-                                    title = entry.title,
-                                    subtitle = when (entry.route) {
-                                        "auto_playlist/liked" -> "Songs you love"
-                                        "auto_playlist/downloaded" -> "On this phone"
-                                        "cache_playlist/cached" -> "Played recently, kept"
-                                        else -> "Your most played"
-                                    },
-                                    icon = entry.iconRes,
-                                    colors = when (entry.route) {
-                                        "auto_playlist/liked" -> listOf(Color(0xFFFF2D55), Color(0xFFB0124A))
-                                        "auto_playlist/downloaded" -> listOf(Color(0xFF1E3C72), Color(0xFF2A5298))
-                                        "cache_playlist/cached" -> listOf(Color(0xFF134E5E), Color(0xFF71B280))
-                                        else -> listOf(Color(0xFF3A1C71), Color(0xFFD76D77))
-                                    },
-                                    onClick = { navController.navigate(entry.route) },
-                                )
-                            },
-                            gutter = LibraryGutter,
-                        )
-                    }
+                item(key = "collections", contentType = "collections") {
+                    LibraryCollectionsHero(
+                        collections = pinned.map { entry ->
+                            LibraryCollection(
+                                title = entry.title,
+                                subtitle = when (entry.route) {
+                                    "auto_playlist/liked" -> "Songs you love"
+                                    "auto_playlist/downloaded" -> "On this phone"
+                                    "cache_playlist/cached" -> "Kept from plays"
+                                    else -> "Most played"
+                                },
+                                icon = entry.iconRes,
+                                colors = when (entry.route) {
+                                    "auto_playlist/liked" -> listOf(Color(0xFFFF375F), Color(0xFF9B1B5A))
+                                    "auto_playlist/downloaded" -> listOf(Color(0xFF0A84FF), Color(0xFF1E3C9E))
+                                    "cache_playlist/cached" -> listOf(Color(0xFF30D158), Color(0xFF137A4B))
+                                    else -> listOf(Color(0xFFBF5AF2), Color(0xFF5E2B97))
+                                },
+                                onClick = { navController.navigate(entry.route) },
+                            )
+                        },
+                        gutter = LibraryGutter,
+                        onPlayFirst = if (pinned.first().route == "auto_playlist/liked") {
+                            {
+                                coroutineScope.launch {
+                                    val liked = withContext(Dispatchers.IO) {
+                                        database.likedSongs(com.ozyern.exhale.constants.SongSortType.CREATE_DATE, true).first()
+                                    }
+                                    if (liked.isNotEmpty()) {
+                                        playerConnection.playQueue(
+                                            com.ozyern.exhale.playback.queues.ListQueue(
+                                                title = likedTitle,
+                                                items = liked.shuffled().map { it.toMediaItem() },
+                                            ),
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            null
+                        },
+                    )
                 }
             }
 
+            // ── The places in the library, as one glass group ──
+            item(key = "destinations", contentType = "destinations") {
+                val destinations = buildList {
+                    add(LibraryDestination(stringResource(R.string.filter_playlists), R.drawable.queue_music, Color(0xFFFF9F0A)) { onTabSelected(LibraryFilter.PLAYLISTS) })
+                    add(LibraryDestination(stringResource(R.string.filter_artists), R.drawable.person, Color(0xFFFF375F)) { onTabSelected(LibraryFilter.ARTISTS) })
+                    add(LibraryDestination(stringResource(R.string.filter_albums), R.drawable.album, Color(0xFF0A84FF)) { onTabSelected(LibraryFilter.ALBUMS) })
+                    add(LibraryDestination(stringResource(R.string.filter_songs), R.drawable.music_note, Color(0xFFBF5AF2)) { onTabSelected(LibraryFilter.SONGS) })
+                    if (showSpotifyPlaylists && spotifyPlaylists.isNotEmpty()) {
+                        add(LibraryDestination(stringResource(R.string.spotify), R.drawable.spotify_icon, Color(0xFF1DB954)) { onTabSelected(LibraryFilter.SPOTIFY) })
+                    }
+                }
+                LibraryDestinationList(destinations = destinations, gutter = LibraryGutter)
+            }
             // ── Playlists: led by the card that makes one, stopped at five ──
             item(key = "playlists_shelf", contentType = "card_shelf") {
                 var showCreate by rememberSaveable { mutableStateOf(false) }
@@ -367,35 +388,6 @@ fun LibraryMixScreen(
                         },
                         leading = { NewPlaylistCard(onClick = { showCreate = true }) },
                     )
-                }
-            }
-
-            // ── Albums ──
-            if (albums.isNotEmpty()) {
-                item(key = "albums_shelf", contentType = "card_shelf") {
-                    Column {
-                        LibraryShelfHeader(
-                            title = stringResource(R.string.filter_albums),
-                            gutter = LibraryGutter,
-                            onShowAll = { onTabSelected(LibraryFilter.ALBUMS) }.takeIf { albums.size > LibraryRowMax },
-                        )
-                        LibraryCardRow(
-                            items = albums.take(LibraryRowMax),
-                            key = { "al_${it.id}" },
-                            gutter = LibraryGutter,
-                            title = { it.album.title },
-                            subtitle = { it.artists.joinToString { a -> a.name } },
-                            thumbnails = { listOfNotNull(it.album.thumbnailUrl) },
-                            isPlaylist = false,
-                            onClick = { album -> navController.navigate("album/${album.id}") },
-                            onLongClick = { album ->
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                menuState.show {
-                                    AlbumMenu(originalAlbum = album, navController = navController, onDismiss = menuState::dismiss)
-                                }
-                            },
-                        )
-                    }
                 }
             }
 

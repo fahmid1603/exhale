@@ -65,6 +65,7 @@ fun SettingsJumpSpotlight(modifier: Modifier = Modifier) {
 
     LaunchedEffect(target) {
         val wanted = target?.let(::key) ?: return@LaunchedEffect
+        android.util.Log.i("JumpDbg", "start wanted=$wanted root=$root")
         val owner = root?.semanticsOwner ?: return@LaunchedEffect SettingsJump.done()
         // Let the page finish arriving: until then the search page is still on screen with the
         // same title on its result row.
@@ -72,9 +73,13 @@ fun SettingsJumpSpotlight(modifier: Modifier = Modifier) {
         var found: Rect? = null
         for (attempt in 0 until 14) {
             val nodes = owner.getAllSemanticsNodes(mergingEnabled = false)
-            val textNode = nodes.firstOrNull { node ->
-                node.config.getOrNull(SemanticsProperties.Text)?.any { key(it.text) == wanted } == true
-            }
+            android.util.Log.i("JumpDbg", "attempt=$attempt nodes=${nodes.size} root=${root != null} wanted=$wanted scrollers=${nodes.filter { it.config.contains(SemanticsActions.ScrollBy) }.map { it.boundsInRoot }} texts=${nodes.mapNotNull { it.config.getOrNull(SemanticsProperties.Text)?.joinToString() }.filter { it.contains("rid", true) || it.contains("heme", true) }.take(8)}")
+            fun SemanticsNode.says(): Boolean =
+                config.getOrNull(SemanticsProperties.Text)?.any { key(it.text) == wanted } == true
+            // The title's own node first; failing that the merged tree, where a clickable row has
+            // folded its title into itself and is the node that carries the text.
+            val textNode = nodes.firstOrNull { it.says() }
+                ?: owner.getAllSemanticsNodes(mergingEnabled = true).firstOrNull { it.says() }
             val viewportHeight = owner.rootSemanticsNode.boundsInRoot.height
             if (textNode != null) {
                 val row = textNode.ancestor { it.config.contains(SemanticsActions.OnClick) } ?: textNode

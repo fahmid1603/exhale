@@ -187,6 +187,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import com.ozyern.exhale.ui.component.scrollEdgeVisibility
 import com.ozyern.exhale.ui.component.scrollEdgeScrim
+import com.ozyern.exhale.ui.component.topEdgeFade
 import com.ozyern.exhale.utils.PreferenceStore
 import kotlinx.coroutines.withContext
 import com.ozyern.exhale.constants.AppBarHeight
@@ -2648,8 +2649,10 @@ class MainActivity : ComponentActivity() {
                                             targetOffsetX = { -(it * PushParallax).toInt() },
                                             animationSpec = tween(PushMillis, easing = PushEasing),
                                         ) + fadeOut(
-                                            animationSpec = tween(PushMillis, easing = PushEasing),
-                                            targetAlpha = PushDimAlpha,
+                                            // Gone by half-way: pages are see-through over the
+                                            // live background, so a covered page still showing
+                                            // read as the two dissolving into each other.
+                                            animationSpec = tween(PushMillis / 2),
                                         )
                                         }
                                     },
@@ -2670,8 +2673,7 @@ class MainActivity : ComponentActivity() {
                                             initialOffsetX = { -(it * PushParallax).toInt() },
                                             animationSpec = tween(PushMillis, easing = PushEasing),
                                         ) + fadeIn(
-                                            animationSpec = tween(PushMillis, easing = PushEasing),
-                                            initialAlpha = PushDimAlpha,
+                                            animationSpec = tween(PushMillis / 2, delayMillis = PushMillis / 3),
                                         )
                                         }
                                     },
@@ -2690,10 +2692,21 @@ class MainActivity : ComponentActivity() {
                                         slideOutHorizontally(
                                             targetOffsetX = { it },
                                             animationSpec = tween(PushMillis, easing = PushEasing),
-                                        )
+                                        ) + fadeOut(tween(PushMillis, easing = PushEasing), targetAlpha = 0.2f)
                                         }
                                     },
                                     modifier = Modifier
+                                        // The tabs' content fades out under the logo and the
+                                        // account disc rather than colliding with them.
+                                        .then(
+                                            if (navBackStackEntry?.destination?.route in topLevelScreens) {
+                                                Modifier.topEdgeFade {
+                                                    windowsInsets.getTop(density).toFloat() + with(density) { AppBarHeight.toPx() }
+                                                }
+                                            } else {
+                                                Modifier
+                                            },
+                                        )
                                         // The page steps back as the player comes up over it —
                                         // a little smaller, rounded, a shade darker — and comes
                                         // forward again as it goes down: the depth half of the
@@ -3058,7 +3071,7 @@ private val TabEnter =fadeIn(tween(200, delayMillis = 40, easing = androidx.comp
     slideInVertically(spring(dampingRatio = 0.86f, stiffness = 520f)) { it / 60 }
 private val TabExit = fadeOut(tween(90, easing = androidx.compose.animation.core.FastOutLinearInEasing))
 
-private const val PushMillis = 340
-private val PushEasing = androidx.compose.animation.core.CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
+private const val PushMillis = 460
+private val PushEasing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f)
 private const val PushParallax = 0.30f
 private const val PushDimAlpha = 0.85f

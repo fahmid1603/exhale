@@ -112,6 +112,13 @@ fun OnlineSearchResult(
 
     val coroutineScope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
+    // The lyric matches arrive after the results and go in above them; a list still at its top
+    // would otherwise keep its place and leave them hidden above the first row.
+    androidx.compose.runtime.LaunchedEffect(viewModel.lyricMatches) {
+        if (viewModel.lyricMatches.isNotEmpty() && lazyListState.firstVisibleItemIndex <= 3) {
+            lazyListState.animateScrollToItem(0)
+        }
+    }
 
     val searchFilter by viewModel.filter.collectAsState()
     val searchSummary = viewModel.summaryPage

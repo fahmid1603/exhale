@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
@@ -60,6 +62,10 @@ internal fun MusicVideoSurface(
     /** Fit the picture inside both edges (full screen); otherwise it takes the full width. */
     fitInside: Boolean = false,
     alignment: androidx.compose.ui.Alignment = androidx.compose.ui.Alignment.Center,
+    /** Where the bottom of the picture is, in root coordinates, once laid out. */
+    onPictureBottom: (Float) -> Unit = {},
+    /** Drawn over the picture itself, in its own bounds: controls that belong to the video. */
+    overlay: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = {},
     onFirstFrame: () -> Unit = {},
     onError: () -> Unit = {},
 ) {
@@ -121,20 +127,27 @@ internal fun MusicVideoSurface(
     val aspect = if (stream.width > 0 && stream.height > 0) stream.width.toFloat() / stream.height else 16f / 9f
     androidx.compose.foundation.layout.BoxWithConstraints(modifier, contentAlignment = alignment) {
         val heightLimited = fitInside && maxHeight.value > 0f && maxWidth / maxHeight > aspect
-        AndroidView(
-            factory = { viewContext ->
-                android.view.TextureView(viewContext).also { player.setVideoTextureView(it) }
-            },
-            update = { player.setVideoTextureView(it) },
-            onRelease = { player.clearVideoTextureView(it) },
-            modifier = (
+        val reportBottom by rememberUpdatedState(onPictureBottom)
+        androidx.compose.foundation.layout.Box(
+            (
                 if (heightLimited) {
                     androidx.compose.ui.Modifier.fillMaxHeight().aspectRatio(aspect, matchHeightConstraintsFirst = true)
                 } else {
                     androidx.compose.ui.Modifier.fillMaxWidth().aspectRatio(aspect)
                 }
-                )
-                .graphicsLayer { this.alpha = alpha },
-        )
+                ).onGloballyPositioned { reportBottom(it.positionInRoot().y + it.size.height) },
+        ) {
+            AndroidView(
+                factory = { viewContext ->
+                    android.view.TextureView(viewContext).also { player.setVideoTextureView(it) }
+                },
+                update = { player.setVideoTextureView(it) },
+                onRelease = { player.clearVideoTextureView(it) },
+                modifier = androidx.compose.ui.Modifier
+                    .matchParentSize()
+                    .graphicsLayer { this.alpha = alpha },
+            )
+            if (rendered) overlay()
+        }
     }
 }
