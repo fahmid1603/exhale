@@ -1,7 +1,7 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from '../router.jsx'
 import { MAINTAINER, RELEASES, REPO, TELEGRAM, TELEGRAM_CHANNEL } from '../content.js'
-import { LATEST_RELEASE as RELEASE } from '../releases.js'
+import { ALL_RELEASES, LATEST_RELEASE as RELEASE, releasePath } from '../releases.js'
 import { DownloadIcon, GithubIcon, Mark, TelegramIcon } from '../icons.jsx'
 
 export const RELEASE_PATH = `/release/${RELEASE.version}`
@@ -23,76 +23,90 @@ export const RELEASE_PATH = `/release/${RELEASE.version}`
  * anything.
  */
 export function AnnounceBar() {
+  const [shut, setShut] = useState(false)
+  if (shut) return null
+  // OPPO's promo strip: one centred sentence, an underlined call, and an ×.
   return (
-    <Link className="announce" to={RELEASE_PATH}>
-      <span className="announce-tag">New</span>
-      <span className="announce-text">
-        Exhale {RELEASE.version} — Apple Music’s shape across the whole app,
-        offline playback, and updates that install themselves
-      </span>
-      <span className="announce-go" aria-hidden="true">
-        ›
-      </span>
-    </Link>
+    <div className="announce">
+      <span className="announce-text">Exhale {RELEASE.version} is here. Ultra fluid. Knows your music.</span>
+      <Link className="announce-go" to={RELEASE_PATH}>
+        See what’s new
+      </Link>
+      <button type="button" className="announce-close" aria-label="Close" onClick={() => setShut(true)}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+      </button>
+    </div>
   )
 }
 
-/** The thin global bar. Deliberately quiet; it is about the project, not the page. */
+/**
+ * The global bar, as OPPO's: white, the mark and the name on the left with the
+ * main links beside them, the quieter links and the icons on the right. It
+ * scrolls away with the page. Hovering Releases opens a panel down the full
+ * width listing every release page, the way OPPO's product menus open.
+ */
 export function TopBar() {
+  const [menu, setMenu] = useState(false)
   return (
-    <div className="topbar">
-      <nav className="topbar-inner" aria-label="Project">
-        <Link className="wordmark" to="/" aria-label="Exhale, home">
+    <div className="ohdr" onMouseLeave={() => setMenu(false)}>
+      <nav className="ohdr-row" aria-label="Project">
+        <Link className="ohdr-brand" to="/" aria-label="Exhale, home">
           <Mark />
+          <span>Exhale</span>
         </Link>
-        <a href={RELEASES} target="_blank" rel="noreferrer">
-          Download
-        </a>
-        <Link className="hide-sm" to={RELEASE_PATH}>
-          {RELEASE.version}
-        </Link>
-        <a className="hide-sm" href={`${REPO}/releases`} target="_blank" rel="noreferrer">
-          Releases
-        </a>
-        <a className="hide-sm" href={REPO} target="_blank" rel="noreferrer">
-          Source
-        </a>
-        <Link className="hide-sm" to="/support">
-          Support
-        </Link>
-        <a
-          className="hide-sm"
-          href={`${REPO}/blob/master/CONTRIBUTING.md`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Contributing
-        </a>
-        <a href={`${REPO}/blob/master/LICENSE`} target="_blank" rel="noreferrer">
-          GPL-3.0
-        </a>
-        <a className="topicon" href={REPO} target="_blank" rel="noreferrer" aria-label="Source on GitHub">
-          <GithubIcon />
-        </a>
-        <a
-          className="topicon"
-          href={TELEGRAM_CHANNEL}
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Exhale on Telegram"
-        >
-          <TelegramIcon />
-        </a>
-        <a
-          className="topicon"
-          href={RELEASES}
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Download the APK"
-        >
-          <DownloadIcon />
-        </a>
+        <div className="ohdr-main">
+          <a href={RELEASES} target="_blank" rel="noreferrer">
+            Download
+          </a>
+          <button
+            type="button"
+            className="ohdr-menu"
+            data-open={menu}
+            aria-expanded={menu}
+            onMouseEnter={() => setMenu(true)}
+            onClick={() => setMenu((m) => !m)}
+          >
+            Releases
+          </button>
+          <a className="hide-sm" href={REPO} target="_blank" rel="noreferrer">
+            Source
+          </a>
+          <Link className="hide-sm" to="/support">
+            Support
+          </Link>
+        </div>
+        <div className="ohdr-side">
+          <a className="hide-sm" href={`${REPO}/blob/master/CONTRIBUTING.md`} target="_blank" rel="noreferrer">
+            Contributing
+          </a>
+          <a className="hide-sm" href={`${REPO}/blob/master/LICENSE`} target="_blank" rel="noreferrer">
+            GPL-3.0
+          </a>
+          <a className="ohdr-icon" href={REPO} target="_blank" rel="noreferrer" aria-label="Source on GitHub">
+            <GithubIcon />
+          </a>
+          <a className="ohdr-icon" href={TELEGRAM_CHANNEL} target="_blank" rel="noreferrer" aria-label="Exhale on Telegram">
+            <TelegramIcon />
+          </a>
+          <a className="ohdr-icon" href={RELEASES} target="_blank" rel="noreferrer" aria-label="Download the APK">
+            <DownloadIcon />
+          </a>
+        </div>
       </nav>
+      <div className="ohdr-panel" data-open={menu} aria-hidden={!menu}>
+        <div className="ohdr-panel-row">
+          {ALL_RELEASES.map((r, i) => (
+            <Link key={r.version} className="ohdr-rel" to={releasePath(r)} onClick={() => setMenu(false)} tabIndex={menu ? 0 : -1}>
+              <b>Exhale {r.version}</b>
+              <span>{i === 0 ? 'Latest' : r.date}</span>
+            </Link>
+          ))}
+          <a className="ohdr-rel" href={`${REPO}/releases`} target="_blank" rel="noreferrer" tabIndex={menu ? 0 : -1}>
+            <b>All releases</b>
+            <span>On GitHub</span>
+          </a>
+        </div>
+      </div>
     </div>
   )
 }
