@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The first light of the boot sequence, drawn by the system splash window while the app process is
+    still starting: an amber ember, the same colours as BootSplash's bloom, fading to nothing well
+    inside the icon mask so the mask's circle never shows. BootSplash takes it over and widens it.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="288"
+    android:viewportHeight="288">
+    <group
+        android:name="ember"
+        android:pivotX="144"
+        android:pivotY="144"
+        android:scaleX="0.35"
+        android:scaleY="0.35">
+        <path
+            android:name="glow"
+            android:fillAlpha="0"
+            android:pathData="M144,48 A96,96 0 1,1 143.99,48 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="radial"
+                    android:centerX="144"
+                    android:centerY="144"
+                    android:gradientRadius="96">
+                    <item android:offset="0" android:color="#C8E0A020" />
+                    <item android:offset="0.45" android:color="#5C8A5A12" />
+                    <item android:offset="0.75" android:color="#2233200A" />
+                    <item android:offset="1" android:color="#0033200A" />
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
+</vector>

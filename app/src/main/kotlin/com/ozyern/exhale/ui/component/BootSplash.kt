@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
@@ -190,6 +191,11 @@ fun BootSplash(
     // The bloom's two light sources, circling. Runs from frame one to the last.
     val drift = remember { Animatable(0f) }
     val iris = remember { Animatable(0f) }
+    // The system splash window's ember (splash_ember), carried over: full on the first frame, so
+    // the hand-off from the launch window has no gap, and handed to the bloom as it widens.
+    val ember = remember { Animatable(1f) }
+    // The mark speaking: its own sound waves rippling out of it once it is in focus.
+    val waves = remember { Animatable(0f) }
     // The mark's flight to the top bar.
     val flight = remember { Animatable(0f) }
     val haptic = LocalHapticFeedback.current
@@ -201,6 +207,9 @@ fun BootSplash(
     LaunchedEffect(markRes) {
         launch {
             bloom.animateTo(1f, tween(durationMillis = 380, easing = LinearOutSlowInEasing))
+        }
+        launch {
+            ember.animateTo(0f, tween(durationMillis = 520, easing = FastOutSlowInEasing))
         }
         launch {
             drift.animateTo(1f, tween(durationMillis = 2_400, easing = LinearEasing))
@@ -230,6 +239,10 @@ fun BootSplash(
         launch {
             delay(260)
             glint.animateTo(1.3f, tween(durationMillis = 700, easing = FastOutSlowInEasing))
+        }
+        launch {
+            delay(380)
+            waves.animateTo(1f, tween(durationMillis = 1_000, easing = LinearEasing))
         }
         launch {
             // Damping 0.88: it settles rather than bounces. The old 0.62 gave a visible rebound,
@@ -299,6 +312,24 @@ fun BootSplash(
                         center = center,
                         blendMode = BlendMode.Clear,
                     )
+                    // A plate of black left under the mark for the first moments of the opening.
+                    // Without it the app showed through the mark's own gaps before the mark had
+                    // moved: a frame of the Home cards' colours caught inside the logo.
+                    val plate = (1f - progress * 2.6f).coerceIn(0f, 1f)
+                    if (plate > 0f) {
+                        val plateRadius = artworkSize.toPx() * 0.5f
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                0f to Color.Black.copy(alpha = plate),
+                                0.82f to Color.Black.copy(alpha = plate),
+                                1f to Color.Transparent,
+                                center = center,
+                                radius = plateRadius,
+                            ),
+                            radius = plateRadius,
+                            center = center,
+                        )
+                    }
                     // The exhale: a gold ring on the aperture's edge, bright as it leaves the mark
                     // and spent by the time it reaches the corners. A wide faint stroke under a
                     // fine bright one, so it glows without a blur pass.
@@ -326,14 +357,35 @@ fun BootSplash(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer { alpha = bloom.value }
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(BloomDark.copy(alpha = 0.55f), SplashBase),
-                    ),
-                )
+                // The bloom's strength is in the drawing rather than on the layer: the ember drawn
+                // here has to be at full strength while the bloom is still at nothing.
+                .drawBehind {
+                    drawRect(
+                        Brush.verticalGradient(
+                            colors = listOf(BloomDark.copy(alpha = 0.55f * bloom.value), Color.Transparent),
+                        ),
+                    )
+                }
                 .drawWithContent {
                     drawContent()
+                    // The launch window's ember, at the size it was drawn at there (96dp), fading
+                    // as the bloom it grows into comes up around it.
+                    val e = ember.value
+                    if (e > 0.01f) {
+                        val r = 96.dp.toPx()
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                0f to BloomDeep.copy(alpha = 0.78f * e),
+                                0.45f to Color(0xFF8A5A12).copy(alpha = 0.36f * e),
+                                0.75f to BloomDark.copy(alpha = 0.13f * e),
+                                1f to Color.Transparent,
+                                center = center,
+                                radius = r,
+                            ),
+                            radius = r,
+                            center = center,
+                        )
+                    }
                     val turn = drift.value * 1.2f
                     val reach = size.minDimension * 0.62f
                     listOf(0f to 0.62f, 2.4f to 0.36f).forEach { (phase, strength) ->
@@ -344,8 +396,8 @@ fun BootSplash(
                         drawCircle(
                             brush = Brush.radialGradient(
                                 colors = listOf(
-                                    BloomDeep.copy(alpha = strength),
-                                    BloomDark.copy(alpha = strength * 0.45f),
+                                    BloomDeep.copy(alpha = strength * bloom.value),
+                                    BloomDark.copy(alpha = strength * 0.45f * bloom.value),
                                     Color.Transparent,
                                 ),
                                 center = center,
@@ -363,6 +415,45 @@ fun BootSplash(
             modifier = Modifier
                 .fillMaxSize()
                 .drawWithContent {
+                    // The mark's own sound waves, leaving it: three arcs on its right, where the
+                    // logo draws its waves, widening and spending themselves a beat apart.
+                    val w = waves.value
+                    if (w > 0f && w < 1f) {
+                        val art = artworkSize.toPx()
+                        val origin = Offset(center.x + art * 0.10f, center.y)
+                        for (i in 0 until 3) {
+                            val local = ((w - i * 0.16f) / 0.68f).coerceIn(0f, 1f)
+                            if (local <= 0f || local >= 1f) continue
+                            val radius = lerp(art * 0.36f, art * 0.92f, FastOutSlowInEasing.transform(local))
+                            val a = sin(local * Math.PI.toFloat()) * (1f - i * 0.22f)
+                            val arcSize = androidx.compose.ui.geometry.Size(radius * 2f, radius * 2f)
+                            val topLeft = Offset(origin.x - radius, origin.y - radius)
+                            drawArc(
+                                color = RingGoldDeep.copy(alpha = 0.22f * a),
+                                startAngle = -42f,
+                                sweepAngle = 84f,
+                                useCenter = false,
+                                topLeft = topLeft,
+                                size = arcSize,
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                    width = 10.dp.toPx(),
+                                    cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                                ),
+                            )
+                            drawArc(
+                                color = RingGold.copy(alpha = 0.8f * a),
+                                startAngle = -42f,
+                                sweepAngle = 84f,
+                                useCenter = false,
+                                topLeft = topLeft,
+                                size = arcSize,
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                    width = 2.dp.toPx(),
+                                    cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                                ),
+                            )
+                        }
+                    }
                     val t = inhale.value
                     if (t <= 0f || t >= 1f) return@drawWithContent
                     val far = hypot(size.width, size.height) * 0.5f

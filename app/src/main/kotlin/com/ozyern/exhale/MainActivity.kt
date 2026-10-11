@@ -561,6 +561,10 @@ class MainActivity : ComponentActivity() {
     )
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // The launch window's ember hands straight over to BootSplash, which draws the same ember
+        // in the same place on its first frame. The system's own exit fades its window out first,
+        // which dipped the light to almost nothing for a moment between the two.
+        splashScreen.setOnExitAnimationListener { it.remove() }
         launchIntentIsNew = savedInstanceState == null
         // Modern edge-to-edge: draw fully behind the status & navigation bars with transparent,
         // scrim-free system bars for a truly immersive, bezel-less look. Android 15+ enforces
