@@ -62,6 +62,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.colorControls
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.isRuntimeShaderSupported
 import coil3.compose.AsyncImage
 import com.ozyern.exhale.R
 import com.ozyern.exhale.innertube.models.SongItem
@@ -155,82 +163,82 @@ private fun HeroPickCard(
                 },
             ),
     ) {
-        AsyncImage(
-            model = art,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
-        // The same artwork again, blurred, and only its lower strip shown: frosted glass cut from
-        // the cover itself, lined up with it exactly.
+        // The cover is recorded so the caption can be glass over it: the panel bends and frosts the
+        // artwork actually behind it, not a blurred copy laid underneath.
+        val coverBackdrop = rememberLayerBackdrop()
         AsyncImage(
             model = art,
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxSize()
-                .drawWithContent {
-                    clipRect(top = size.height * (1f - CAPTION_FRACTION)) {
-                        this@drawWithContent.drawContent()
-                    }
-                }
-                .blur(26.dp),
+                .layerBackdrop(coverBackdrop),
         )
-        Box(
-            Modifier
-                .fillMaxSize()
-                .drawBehind {
-                    val top = size.height * (1f - CAPTION_FRACTION)
-                    // A soft seam into the strip, then a light darkening under the words.
-                    drawRect(
-                        Brush.verticalGradient(
-                            0f to Color.Transparent,
-                            1f to Color.Black.copy(alpha = 0.18f),
-                            startY = top - 28.dp.toPx(),
-                            endY = top,
-                        ),
-                        topLeft = androidx.compose.ui.geometry.Offset(0f, top - 28.dp.toPx()),
-                        size = androidx.compose.ui.geometry.Size(size.width, 28.dp.toPx()),
-                    )
-                    drawRect(
-                        Color.Black.copy(alpha = 0.26f),
-                        topLeft = androidx.compose.ui.geometry.Offset(0f, top),
-                        size = androidx.compose.ui.geometry.Size(size.width, size.height - top),
-                    )
-                    drawLine(
-                        Color.White.copy(alpha = 0.16f),
-                        androidx.compose.ui.geometry.Offset(0f, top),
-                        androidx.compose.ui.geometry.Offset(size.width, top),
-                        0.6.dp.toPx(),
-                    )
-                },
-        )
+        // BeatWave's floating caption: a pane of glass set in from the card's edges rather than a
+        // strip across its foot - the cover runs all the way round it, so the card still reads as
+        // the artwork with the words resting on it.
+        val panelShape = RoundedCornerShape(24.dp)
+        val glassy = remember { isRuntimeShaderSupported() }
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .align(Alignment.BottomStart)
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .fillMaxHeight(CAPTION_FRACTION)
-                .padding(start = 16.dp, end = 12.dp),
+                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
+                .then(
+                    if (glassy) {
+                        Modifier.drawBackdrop(
+                            backdrop = coverBackdrop,
+                            shape = { panelShape },
+                            effects = {
+                                colorControls(saturation = 1.4f)
+                                blur(10f.dp.toPx())
+                                lens(12f.dp.toPx(), 22f.dp.toPx(), depthEffect = true)
+                            },
+                            highlight = { Highlight.Default.copy(alpha = 0.55f) },
+                            onDrawSurface = { drawRect(Color.Black.copy(alpha = 0.22f)) },
+                        )
+                    } else {
+                        Modifier
+                            .clip(panelShape)
+                            .background(Color.Black.copy(alpha = 0.42f))
+                    },
+                )
+                .border(0.8.dp, Color.White.copy(alpha = 0.22f), panelShape)
+                .padding(start = 16.dp, end = 10.dp, top = 12.dp, bottom = 12.dp),
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
                     song.title,
-                    fontSize = 19.sp,
+                    fontSize = 20.sp,
                     lineHeight = 23.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                     letterSpacing = (-0.2).sp,
                     color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                val artists = song.artists.joinToString { it.name }
+                if (artists.isNotBlank()) {
+                    Text(
+                        artists,
+                        fontSize = 16.sp,
+                        lineHeight = 20.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White.copy(alpha = 0.88f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Text(
                     pick.reason,
                     fontSize = 13.sp,
                     lineHeight = 17.sp,
-                    color = Color.White.copy(alpha = 0.74f),
+                    fontWeight = FontWeight.Medium,
+                    color = Color.White.copy(alpha = 0.62f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
             Spacer(Modifier.width(10.dp))
@@ -238,10 +246,10 @@ private fun HeroPickCard(
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .size(42.dp)
+                    .size(46.dp)
                     .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.22f))
-                    .border(0.8.dp, Color.White.copy(alpha = 0.35f), CircleShape)
+                    .background(Color.White.copy(alpha = 0.16f))
+                    .border(1.dp, Color.White.copy(alpha = 0.42f), CircleShape)
                     .clickable(onClick = onPlay),
             ) {
                 Icon(
@@ -251,6 +259,5 @@ private fun HeroPickCard(
                     modifier = Modifier.size(22.dp),
                 )
             }
-        }
-    }
+        }    }
 }
