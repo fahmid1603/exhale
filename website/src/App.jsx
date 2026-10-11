@@ -10,6 +10,7 @@ import Phone from './components/Phone.jsx'
 import KeyHero from './components/KeyHero.jsx'
 import {
   ABOUT_FACTS,
+  APK_URL,
   FEATURES,
   LYRICS_VIDEO,
   OPEN_FACTS,
@@ -28,7 +29,7 @@ import { LATEST_RELEASE } from './releases.js'
 /** Screens from the 1.0.405 build, taken on a phone. */
 const SHOT_405 = {
   artist: { src: '/shots/405-artist.jpg', alt: 'Sabrina Carpenter’s artist page: her portrait full bleed, Play between follow and shuffle, the latest album, then Top songs.' },
-  settings: { src: '/shots/405-settings.jpg', alt: 'Settings: the Exhale card, then Essentials and Integrations as grouped glass tables with a coloured glyph on every row.' },
+  settings: { src: '/shots/405-settings.jpg', alt: 'Library: the Exhale card, then playlists, artists, albums and songs as grouped glass tables.' },
   about: { src: '/shots/405-about.jpg', alt: 'About: the Exhale 1.0.405 card over gold light, saying Exhale is up to date, above the maintainer and Connect.' },
 }
 
@@ -289,7 +290,7 @@ function Design() {
           shot={SHOT304.home}
         />
         <ShotTile
-          kicker="Settings"
+          kicker="Library"
           title="One material, everywhere."
           body="Grouped glass tables, hairlines inset to the label, and a coloured glyph on every row."
           shot={SHOT_405.settings}
@@ -369,7 +370,7 @@ export default function App() {
           title="Ultra fluid. Knows your music."
           body="Live glass on every surface, lyrics that land on the beat, and color that follows whatever is playing. Open source, for Android 13 and newer."
           primary={
-            <a className="kh-pill" href={RELEASES} target="_blank" rel="noreferrer">
+            <a className="kh-pill" href={APK_URL} target="_blank" rel="noreferrer">
               Download {LATEST_RELEASE.version}
             </a>
           }
@@ -408,7 +409,7 @@ export default function App() {
             </p>
 
             <div className="btnrow reveal" style={{ '--d': '240ms' }}>
-              <a className="btn" href={RELEASES} target="_blank" rel="noreferrer">
+              <a className="btn" href={APK_URL} target="_blank" rel="noreferrer">
                 Download v{VERSION}
               </a>
               <button type="button" className="btn btn-ghost" onClick={openNotes}>

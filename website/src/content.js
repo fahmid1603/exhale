@@ -8,7 +8,8 @@
 
 export const REPO = 'https://github.com/ozyern/Exhale'
 export const RELEASES = `${REPO}/releases/latest`
-export const VERSION = '1.0.304'
+export const APK_URL = 'https://github.com/ozyern/exhale/releases/download/v1.0.405/Exhale-1.0.405.apk'
+export const VERSION = '1.0.405'
 
 /**
  * Palettes. `rose` is the app's DefaultThemeColor; the other two are what
@@ -163,7 +164,7 @@ export const OPEN_FACTS = [
 export const ABOUT_FACTS = [
   { label: 'Version', value: VERSION },
   { label: 'Architecture', value: 'Universal' },
-  { label: 'Size', value: '38 MB' },
+  { label: 'Size', value: '41 MB' },
   { label: 'Requires', value: 'Android 13' },
 ]
 
