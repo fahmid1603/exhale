@@ -93,7 +93,9 @@ internal data class TimedLine(
  * Writes timed lines as the TTML Exhale's lyric view already reads for word-by-word highlighting:
  * one `<p>` per line and one `<span>` per word, with single spaces between the spans.
  */
-internal fun timedLinesToTtml(lines: List<TimedLine>): String? {
+internal fun timedLinesToTtml(timed: List<TimedLine>): String? {
+    // The credits some catalogues file as the opening lines, sung over the intro.
+    val lines = timed.filterIndexed { index, line -> index >= CREDIT_LINES_CHECKED || !isCreditLine(line.text) }
     if (lines.isEmpty()) return null
     fun t(ms: Long) = String.format(Locale.ROOT, "%.3fs", ms.coerceAtLeast(0L) / 1000.0)
     fun esc(text: String) = text
@@ -120,6 +122,26 @@ internal fun timedLinesToTtml(lines: List<TimedLine>): String? {
     }
     return "<tt xmlns=\"http://www.w3.org/ns/ttml\" xmlns:ttm=\"http://www.w3.org/ns/ttml#metadata\">" +
         "<body><div>$body</div></body></tt>"
+}
+
+/** Credits only ever open a song; a line further in that looks like one is lyrics. */
+private const val CREDIT_LINES_CHECKED = 4
+
+private val CREDIT_PREFIX = Regex(
+    """^\s*(作词|作曲|编曲|制作人|词|曲|監督|作詞|編曲|lyrics?|lyricist|composer|composed by|written by|writers?|producers?|produced by|arranged by)\s*[:：]""",
+    RegexOption.IGNORE_CASE,
+)
+
+/**
+ * A credits line rather than a sung one: "作词 : …", "Written by: …", or the bare list a catalogue
+ * sends for its writers — "JulianBunetta/JohnRyan/SabrinaCarpenter/…" — names run together and
+ * split by slashes, which no lyric is.
+ */
+internal fun isCreditLine(text: String): Boolean {
+    val line = text.trim()
+    if (CREDIT_PREFIX.containsMatchIn(line)) return true
+    val names = line.split('/').map { it.trim() }
+    return names.size >= 3 && names.all { it.isNotEmpty() && it.none(Char::isWhitespace) }
 }
 
 private val ENHANCED_WORD = Regex("""<(\d{1,2}):(\d{1,2}(?:\.\d{1,3})?)>""")
@@ -421,15 +443,21 @@ object BinimumLyricsProvider : LyricsProvider {
             }
             .build()
         val body = OpenLyricsHttp.get(url.toString()) ?: return null
-        val hit = runCatching { OpenLyricsHttp.json.decodeFromString<Response>(body) }.getOrNull()
-            ?.results?.firstOrNull { !it.lyricsUrl.isNullOrBlank() }
-            ?: return null
-        // A result whose length is far from the song's is another recording of it.
-        if (isrc.isNullOrBlank() && duration > 0 && hit.duration != null && hit.duration > 0 &&
-            kotlin.math.abs(hit.duration - duration) > 12
-        ) {
-            return null
-        }
+        val results = runCatching { OpenLyricsHttp.json.decodeFromString<Response>(body) }.getOrNull()
+            ?.results.orEmpty()
+            .filter { !it.lyricsUrl.isNullOrBlank() }
+        // Asked by ISRC, the answer is that recording. Asked by name, the first hit was taken on
+        // trust, and a song of the same name by someone else was this one's lyrics from then on:
+        // a hit has to be this title by this artist, and of about this length.
+        val hit = if (!isrc.isNullOrBlank()) {
+            results.firstOrNull()
+        } else {
+            results.firstOrNull { candidate ->
+                SongQuery.sameSong(title, artist, candidate.trackName, candidate.artistName) &&
+                    (duration <= 0 || candidate.duration == null || candidate.duration <= 0 ||
+                        kotlin.math.abs(candidate.duration - duration) <= 12)
+            }
+        } ?: return null
         return Recording(hit.isrc?.takeIf { it.isNotBlank() }, hit.lyricsUrl, hit.duration)
     }
 

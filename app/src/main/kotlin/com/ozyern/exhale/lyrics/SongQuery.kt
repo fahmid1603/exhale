@@ -48,4 +48,43 @@ internal object SongQuery {
             segment.length in 2..40 && !segment.equals(lead, ignoreCase = true) && !noise.containsMatchIn(segment)
         } ?: lead
     }
+
+    private val bracketedPart = Regex("""[(\[][^)\]]*[)\]]""")
+    private val combiningMarks = Regex("""\p{Mn}+""")
+    private val artistSeparators = Regex(
+        """\s*(?:,|&|;|/|\s+and\s+|\s+x\s+|\s+with\s+|\s+feat\.?\s+|\s+ft\.?\s+)\s*""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** Letters and digits only, lower case, accents dropped: "Don’t Smile" and "Don't Smile" agree. */
+    fun normalized(value: String): String =
+        java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFD)
+            .replace(combiningMarks, "")
+            .lowercase(java.util.Locale.ROOT)
+            .map { if (it.isLetterOrDigit()) it else ' ' }
+            .joinToString("")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+
+    private fun coreOf(title: String): String =
+        normalized(cleanTitle(title).replace(bracketedPart, " ").substringBefore(" - ")).ifEmpty { normalized(title) }
+
+    /**
+     * Whether a lyrics index's hit is the song asked for: the same title outside its brackets, and
+     * an artist in common. An index that searches by name ranks by its own idea of close, and
+     * "Don't Smile" by somebody else, the same length give or take, came back first and was shown
+     * as Sabrina Carpenter's. A hit that names no artist is judged on the title alone.
+     */
+    fun sameSong(title: String, artist: String, hitTitle: String?, hitArtist: String?): Boolean {
+        val wanted = coreOf(title)
+        val got = coreOf(hitTitle ?: return false)
+        if (wanted.isEmpty() || got.isEmpty()) return false
+        val titleMatches = wanted == got ||
+            (minOf(wanted.length, got.length) >= 4 && (wanted.startsWith(got) || got.startsWith(wanted)))
+        if (!titleMatches) return false
+        if (hitArtist.isNullOrBlank() || artist.isBlank()) return true
+        val wantedArtists = artist.split(artistSeparators).map(::normalized).filter { it.isNotEmpty() }
+        val gotArtists = hitArtist.split(artistSeparators).map(::normalized).filter { it.isNotEmpty() }
+        return wantedArtists.any { a -> gotArtists.any { b -> a == b || a.contains(b) || b.contains(a) } }
+    }
 }

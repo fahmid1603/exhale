@@ -156,8 +156,12 @@ object LyricsUtils {
                 words = words,
                 agent = line.agent,
             )
-        }.sorted()
+        }.sorted().withoutCredits()
     }
+
+    /** The credits a catalogue filed as the song's opening lines; see [isCreditLine]. */
+    private fun List<LyricsEntry>.withoutCredits(): List<LyricsEntry> =
+        filterIndexed { index, entry -> index >= 4 || !isCreditLine(entry.text) }
 
     fun parseLyrics(lyrics: String): List<LyricsEntry> {
         val lines = lyrics.lines()
@@ -174,7 +178,7 @@ object LyricsUtils {
                 )
             }
         }
-        return result.sorted()
+        return result.sorted().withoutCredits()
     }
 
     private fun parseLine(line: String): List<LyricsEntry>? {

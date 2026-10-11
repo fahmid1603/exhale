@@ -974,19 +974,22 @@ class MusicService :
                         }
                         publishLiveLyrics(mediaMetadata, shown)
 
-                        // A saved copy is kept for good, so a song first found with lyrics timed
-                        // only by the line stayed that way even once a source had it word by word.
-                        // Once a session, such a song is looked up again, and a word-timed copy
-                        // replaces the saved one.
+                        // A saved copy was kept for good: a song first found with lyrics timed only
+                        // by the line stayed that way once a source had it word by word, and a song
+                        // once given another song's words — a source that took a namesake for it —
+                        // kept those for good. Once a session a saved song is looked up again, and
+                        // the fresh copy replaces the saved one when it is word-timed where the
+                        // saved one wasn't, or when the two aren't the same words at all.
                         if (cached != null && mediaMetadata.id !in lyricsUpgradeChecked &&
-                            cached.lyrics != com.ozyern.exhale.db.entities.LyricsEntity.LYRICS_NOT_FOUND &&
-                            !lyricsHelper.isWordSynced(cached.lyrics) &&
-                            (dataStore.data.first()[com.ozyern.exhale.constants.PreferWordSyncedLyricsKey] ?: true)
+                            cached.lyrics != com.ozyern.exhale.db.entities.LyricsEntity.LYRICS_NOT_FOUND
                         ) {
                             lyricsUpgradeChecked.add(mediaMetadata.id)
+                            val preferWord = dataStore.data.first()[com.ozyern.exhale.constants.PreferWordSyncedLyricsKey] ?: true
                             val better = lyricsHelper.getLyrics(mediaMetadata, trackLookup = false, skipCache = true)
-                            if (better != com.ozyern.exhale.db.entities.LyricsEntity.LYRICS_NOT_FOUND &&
-                                lyricsHelper.isWordSynced(better)
+                            if (better != com.ozyern.exhale.db.entities.LyricsEntity.LYRICS_NOT_FOUND && (
+                                    !com.ozyern.exhale.lyrics.LyricsWords.sameWords(cached.lyrics, better) ||
+                                        (preferWord && !lyricsHelper.isWordSynced(cached.lyrics) && lyricsHelper.isWordSynced(better))
+                                    )
                             ) {
                                 database.query { upsert(LyricsEntity(id = mediaMetadata.id, lyrics = better)) }
                                 publishLiveLyrics(mediaMetadata, better)
