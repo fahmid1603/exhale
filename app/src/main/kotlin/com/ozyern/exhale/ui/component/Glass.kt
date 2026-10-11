@@ -156,15 +156,12 @@ fun Modifier.clearGlass(
         .drawBackdrop(
             backdrop = backdrop,
             shape = { shape },
-            effects = {
-                vibrancy()
-                blur(8f.dp.toPx())
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    lens(24f.dp.toPx(), 24f.dp.toPx(), true)
-                }
-            },
+            // BitChord's liquid glass, number for number — see [dockGlass]. One material for the
+            // dock, its circles, the mini player and the round chrome, so no two pieces of glass
+            // side by side are two densities.
+            effects = { bitChordGlassEffects() },
             highlight = { Highlight.Default },
-            shadow = { Shadow(radius = 24f.dp, color = Color.Black.copy(alpha = if (dark) 0.22f else 0.10f)) },
+            shadow = { Shadow.Default },
             layerBlock = layerBlock,
             onDrawSurface = { drawRect(film) },
         )
@@ -187,21 +184,28 @@ fun Modifier.miniPlayerGlass(
     backdrop: Backdrop = LocalAppBackdrop.current,
     dark: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
 ): Modifier {
-    val film = if (dark) Color(0xFF3A3A3E).copy(alpha = 0.40f) else Color(0xFFFAFAFA).copy(alpha = 0.50f)
-    return this.drawBackdrop(
-        backdrop = backdrop,
-        shape = { shape },
-        effects = {
-            colorControls(saturation = 1.6f)
-            blur(9f.dp.toPx())
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                lens(19f.dp.toPx(), 29f.dp.toPx())
-            }
-        },
-        highlight = { Highlight.Default.copy(width = 0.8f.dp, alpha = 0.5f) },
-        shadow = { Shadow() },
-        onDrawSurface = { drawRect(film) },
-    )
+    // BitChord's mini player is the same liquid glass as its dock, and so is ours now. It was a
+    // lighter grey film (#3A3A3E) with a lens that had no depth and no colour fringing: next to
+    // BitChord's it read as a flat grey bar rather than a dark glossy slab bending the page's
+    // colour at its rim.
+    return dockGlass(shape, backdrop, dark)
+}
+
+/**
+ * BitChord's glass effects (their LiquidGlass.kt, from Echo's Apple-matched config): half again the
+ * saturation, an 8dp blur, and a 24dp lens with depth and colour fringing at the rim.
+ */
+internal fun com.kyant.backdrop.BackdropEffectScope.bitChordGlassEffects() {
+    colorControls(saturation = 1.5f)
+    blur(8f.dp.toPx())
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        lens(
+            refractionHeight = 24f.dp.toPx(),
+            refractionAmount = 24f.dp.toPx(),
+            depthEffect = true,
+            chromaticAberration = true,
+        )
+    }
 }
 
 /**
@@ -223,18 +227,7 @@ fun Modifier.dockGlass(
     return this.drawBackdrop(
         backdrop = backdrop,
         shape = { shape },
-        effects = {
-            colorControls(saturation = 1.5f)
-            blur(8f.dp.toPx())
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                lens(
-                    refractionHeight = 24f.dp.toPx(),
-                    refractionAmount = 24f.dp.toPx(),
-                    depthEffect = true,
-                    chromaticAberration = true,
-                )
-            }
-        },
+        effects = { bitChordGlassEffects() },
         highlight = { Highlight.Default },
         shadow = { Shadow.Default },
         onDrawSurface = { drawRect(film) },

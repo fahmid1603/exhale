@@ -1584,6 +1584,12 @@ class MainActivity : ComponentActivity() {
                     // off-screen recording of the NavHost (published below via
                     // `Modifier.layerBackdrop`), NOT the empty canvas it used to be.
                     val appBackdrop = rememberAppBackdrop()
+                    // What the chrome actually samples: the window's ground (the moving art, opaque)
+                    // with the page recording laid over it. The page alone is transparent wherever a
+                    // page paints no background of its own, and over those stretches the glass had
+                    // nothing to blur, so the dock and the mini player showed the page's text sharp
+                    // through their film. BitChord hit the same bug and fixed it the same way.
+                    val chromeBackdrop = com.kyant.backdrop.backdrops.rememberCombinedBackdrop(rootBackdrop, appBackdrop)
                     val iosOverscrollFactory = com.ozyern.exhale.ui.utils.rememberIosOverscrollFactory()
                     // Drives the State-B mini-player pill in the bottom bar.
                     val nowPlayingMetadata by remember(playerConnection) {
@@ -1591,7 +1597,7 @@ class MainActivity : ComponentActivity() {
                     }.collectAsState()
 
                     CompositionLocalProvider(
-                        LocalAppBackdrop provides appBackdrop,
+                        LocalAppBackdrop provides chromeBackdrop,
                         // iOS rubber-band at every list's edge instead of Android's stretch.
                         androidx.compose.foundation.LocalOverscrollFactory provides iosOverscrollFactory,
                         // What glass *inside* the NavHost refracts. The ambient colour field
@@ -1712,7 +1718,13 @@ class MainActivity : ComponentActivity() {
                                         // window, which read as the chrome running away from the
                                         // thumb; they stay put now, and the
                                         // page's colour rising behind them is what scrolling changes.
-                                        Box(
+                                        //
+                                        // Not with the search field at the top of the Search page:
+                                        // the field is the header there. Drawn anyway, the account
+                                        // disc peeked out from behind the field's end and the 70%
+                                        // scrim behind the logo turned the field's glass into a
+                                        // dark bar.
+                                        if (!(searchFieldAtTop && (onSearchTabRoute || isSearchResultsRoute))) Box(
                                             modifier = Modifier.offset {
                                                 IntOffset(
                                                     x = 0,
@@ -1867,7 +1879,7 @@ class MainActivity : ComponentActivity() {
                                                                         scaleX = s
                                                                         scaleY = s
                                                                     }
-                                                                    .clearGlass(CircleShape, appBackdrop),
+                                                                    .clearGlass(CircleShape, chromeBackdrop),
                                                             )
                                                             Box(
                                                                 Modifier.graphicsLayer {
@@ -2044,7 +2056,7 @@ class MainActivity : ComponentActivity() {
                                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                                                 // Sitting inside the pill, so it
                                                                 // refracts what the pill refracts.
-                                                                backdrop = appBackdrop,
+                                                                backdrop = chromeBackdrop,
                                                             )
                                                         }
                                                         IconButton(

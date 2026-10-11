@@ -49,7 +49,7 @@ import kotlinx.coroutines.launch
  * toggles, sliders, top bar) painted only its own tint film. That is the "the dock is fully
  * transparent" bug, and it was never a dock bug: it was this line.
  */
-val LocalAppBackdrop = staticCompositionLocalOf<LayerBackdrop> {
+val LocalAppBackdrop = staticCompositionLocalOf<com.kyant.backdrop.Backdrop> {
     error("LocalAppBackdrop not provided")
 }
 

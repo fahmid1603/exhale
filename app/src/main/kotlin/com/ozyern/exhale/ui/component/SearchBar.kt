@@ -227,12 +227,9 @@ fun TopSearch(
             ).toDp()
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(topInset + AppBarHeight)
-                .background(color = MaterialTheme.colorScheme.surface)
-        )
+        // No band behind the bar. There was an opaque strip the height of the status bar and the
+        // bar, in the surface colour, so the page could never pass under the field and the glass
+        // had nothing to bend — it read as a flat dark bar with a rim.
 
         // Bottom-docked (Apple-Music) layout: while IDLE the outer surface is 100% transparent —
         // the browse content paints its own background and any container color here would read
@@ -245,16 +242,15 @@ fun TopSearch(
         } else {
             MaterialTheme.colorScheme.background
         }
-        val surfaceColor = if (inputAtBottom) {
-            activeOverlayColor.copy(alpha = animationProgress)
-        } else {
-            colors.containerColor
-        }
+        // Both layouts: the page fades in behind the field as search opens, and until then there is
+        // no surface at all — the field is a pill of glass on its own. At the top it used to be a
+        // flat Material bar in surfaceContainerLow, the one piece of chrome with no glass in it.
+        val surfaceColor = activeOverlayColor.copy(alpha = animationProgress)
         Surface(
             shape = animatedShape,
             color = surfaceColor,
             contentColor = contentColorFor(colors.containerColor),
-            tonalElevation = if (inputAtBottom) 0.dp else tonalElevation,
+            tonalElevation = 0.dp,
             modifier = Modifier
                 .padding(
                     top = animatedSurfaceTopPadding,
@@ -406,7 +402,17 @@ fun TopSearch(
                 }
             } else {
                 Column {
-                    inputField(Modifier.padding(animatedInputFieldPadding))
+                    // The field at the top is the dock's glass — BitChord's — so the bar at the
+                    // top and the bar at the bottom are one material.
+                    Box(
+                        Modifier
+                            .padding(animatedInputFieldPadding)
+                            .padding(horizontal = lerp(0.dp, 12.dp, animationProgress))
+                            .clearGlass(RoundedCornerShape(percent = 50))
+                            .clip(RoundedCornerShape(percent = 50)),
+                    ) {
+                        inputField(Modifier)
+                    }
 
                     if (animationProgress > 0) {
                         // Draw-phase, matching the docked branch above: `animationProgress`

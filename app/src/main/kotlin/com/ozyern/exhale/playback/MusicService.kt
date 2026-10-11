@@ -1911,7 +1911,33 @@ class MusicService :
 
     private fun waitOnNetworkError() {
         waitingForNetworkConnection.value = true
+        // The connectivity observer only speaks when a network comes or goes. Wi-Fi that was up
+        // all along and only got its internet back says nothing, so the wait also checks for
+        // itself and picks the song up again the moment the internet is really there.
+        networkWaitJob?.cancel()
+        networkWaitJob = scope.launch {
+            while (waitingForNetworkConnection.value) {
+                delay(3_000)
+                if (hasValidatedInternet()) {
+                    waitingForNetworkConnection.value = false
+                    if (player.currentMediaItem != null && player.playbackState == Player.STATE_IDLE) {
+                        player.prepare()
+                        player.play()
+                    }
+                }
+            }
+        }
     }
+
+    private var networkWaitJob: kotlinx.coroutines.Job? = null
+
+    /** A network Android has confirmed reaches the internet — not merely one that is attached. */
+    private fun hasValidatedInternet(): Boolean = runCatching {
+        val caps = connectivityManager.getNetworkCapabilities(connectivityManager.activeNetwork)
+            ?: return@runCatching false
+        caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }.getOrDefault(true)
 
     private fun skipOnError() {
         /**
@@ -5175,10 +5201,17 @@ class MusicService :
         val isConnectionError = (error.cause?.cause is PlaybackException) &&
                 (error.cause?.cause as PlaybackException).errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
 
-        if (!isNetworkConnected.value || isConnectionError) {
+        // Offline is not a broken song. It used to be judged by the connectivity flag alone, which
+        // stays "connected" on Wi-Fi with no internet behind it, and by one exact nesting of one
+        // error code, which a stream that failed while being looked up does not have. So with the
+        // internet gone every song in the queue failed as if it were broken, was skipped, and the
+        // run ended on "Several songs in a row couldn't play" — the wrong thing to tell anyone.
+        // Android's own validation is the honest answer: no validated internet, no skipping.
+        if (!isNetworkConnected.value || isConnectionError || !hasValidatedInternet()) {
             // A local music player doesn't stop at a song it can't reach: offline, move on to the
             // next one in the queue that is on the phone, and only wait when there is none.
-            if (!isNetworkConnected.value && skipToNextPlayableOffline()) return
+            if (!waitingForNetworkConnection.value) tellPlaybackProblem(getString(R.string.error_no_internet))
+            if (skipToNextPlayableOffline()) return
             waitOnNetworkError()
             return
         }
