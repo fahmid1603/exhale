@@ -8,6 +8,9 @@
 
 package com.ozyern.exhale
 
+import androidx.lifecycle.Lifecycle
+import kotlinx.coroutines.flow.first
+
 import android.annotation.SuppressLint
 import android.Manifest
 import android.graphics.Color as AndroidColor
@@ -2543,26 +2546,16 @@ class MainActivity : ComponentActivity() {
                                                         .height(navVisibleHeight),
                                                 )
                                             } else {
-                                            LiquidGlassBottomBar(
-                                                items = navigationItems,
-                                                pureBlack = pureBlack,
-                                                collapsed = bottomBarCollapsed,
-                                                hasNowPlaying = nowPlayingMetadata != null,
-                                                onMiniPlayerClick = {
-                                                    coroutineScope.launch { playerBottomSheetState.expandSoft() }
-                                                },
-                                                modifier = Modifier
-                                                    .align(Alignment.BottomCenter)
-                                                    .padding(
-                                                        start = chromeHorizontalPadding,
-                                                        end = chromeHorizontalPadding,
-                                                        bottom = bottomInset + floatingBarsBottomPadding,
-                                                    ),
-                                                isSelected = { screen ->
-                                                    navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } ==
-                                                            true
-                                                },
-                                                onItemClick = { screen, isSelected ->
+                                            // One tab change at a time. A second change fired while the
+                                            // first page is still animating in popped that page mid-flight:
+                                            // its entry was destroyed while NavHost's transition was still
+                                            // composing it, and NavHost crashed asking the dead entry for
+                                            // its saved state ("cannot access the NavBackStackEntry's
+                                            // ViewModels after the NavBackStackEntry is destroyed"). A tap
+                                            // that lands mid-transition is held and replayed the moment the
+                                            // page settles, so fast taps still arrive - just in order.
+                                            var pendingDockTab by remember { mutableStateOf<Screens?>(null) }
+                                            val dockNavigate: (Screens, Boolean) -> Unit = { screen, isSelected ->
                                                     if (screen.route == Screens.Search.route && isSelected) {
                                                         // Already on the Search tab: open the type-in field.
                                                         onActiveChange(true)
@@ -2597,6 +2590,43 @@ class MainActivity : ComponentActivity() {
                                                             launchSingleTop = true
                                                             restoreState = true
                                                         }
+                                                    }
+                                            }
+                                            LaunchedEffect(navBackStackEntry) {
+                                                val entry = navBackStackEntry ?: return@LaunchedEffect
+                                                entry.lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.RESUMED) }
+                                                val waiting = pendingDockTab ?: return@LaunchedEffect
+                                                pendingDockTab = null
+                                                val here = entry.destination.hierarchy.any { it.route == waiting.route }
+                                                dockNavigate(waiting, here)
+                                            }
+                                            LiquidGlassBottomBar(
+                                                items = navigationItems,
+                                                pureBlack = pureBlack,
+                                                collapsed = bottomBarCollapsed,
+                                                hasNowPlaying = nowPlayingMetadata != null,
+                                                onMiniPlayerClick = {
+                                                    coroutineScope.launch { playerBottomSheetState.expandSoft() }
+                                                },
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomCenter)
+                                                    .padding(
+                                                        start = chromeHorizontalPadding,
+                                                        end = chromeHorizontalPadding,
+                                                        bottom = bottomInset + floatingBarsBottomPadding,
+                                                    ),
+                                                isSelected = { screen ->
+                                                    navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } ==
+                                                            true
+                                                },
+                                                onItemClick = { screen, isSelected ->
+                                                    val settled = navController.currentBackStackEntry?.lifecycle
+                                                        ?.currentState?.isAtLeast(Lifecycle.State.RESUMED) != false
+                                                    if (settled || isSelected) {
+                                                        pendingDockTab = null
+                                                        dockNavigate(screen, isSelected)
+                                                    } else {
+                                                        pendingDockTab = screen
                                                     }
                                                 },
                                             )
