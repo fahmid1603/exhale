@@ -192,6 +192,36 @@ fun Modifier.miniPlayerGlass(
 }
 
 /**
+ * BeatWave's glass, for the folded dock: their default GlassEffectConfig, number for number —
+ * vibrancy 1.2 (saturation 1.6), a 2dp blur, a lens of 40% and 60% of 48dp with no depth or
+ * fringing, a #1A1A1A film at 50%, and the rim at the 0.3 their nav bar passes. A clearer, harder
+ * glass than BitChord's: the page stays legible through the circles and the bend at the rim does
+ * the work.
+ */
+@Composable
+fun Modifier.beatWaveGlass(
+    shape: Shape,
+    backdrop: Backdrop = LocalAppBackdrop.current,
+    dark: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
+): Modifier {
+    val film = if (dark) Color(0xFF1A1A1A).copy(alpha = 0.5f) else Color(0xFFFAFAFA).copy(alpha = 0.5f)
+    return this.drawBackdrop(
+        backdrop = backdrop,
+        shape = { shape },
+        effects = {
+            colorControls(saturation = 1.6f)
+            blur(2f.dp.toPx())
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                lens(refractionHeight = 19.2f.dp.toPx(), refractionAmount = 28.8f.dp.toPx())
+            }
+        },
+        highlight = { Highlight.Default.copy(alpha = 0.3f) },
+        shadow = { Shadow.Default },
+        onDrawSurface = { drawRect(film) },
+    )
+}
+
+/**
  * BitChord's glass effects (their LiquidGlass.kt, from Echo's Apple-matched config): half again the
  * saturation, an 8dp blur, and a 24dp lens with depth and colour fringing at the rim.
  */

@@ -13,6 +13,12 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.keyframes
+import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -225,6 +231,22 @@ fun LiquidGlassBottomBar(
     // The jelly dock folds the way the original does: with nothing playing it stays one bar, just
     // minimised — icons only, shorter, narrower. Only with a song playing does it become state B.
     val jellyStyle = dockStyle == DockStyle.JELLY
+    // The liquid dock folds the way BeatWave's does - see FluidDock. The jelly dock keeps its own.
+    if (!jellyStyle) {
+        FluidDock(
+            tabs = tabs,
+            searchScreen = searchScreen,
+            leftTab = activeTab ?: homeTab,
+            collapsed = collapsed,
+            hasNowPlaying = hasNowPlaying,
+            pureBlack = pureBlack,
+            isSelected = isSelected,
+            onItemClick = onItemClickHaptic,
+            onMiniPlayerClick = onMiniPlayerClickHaptic,
+            modifier = modifier,
+        )
+        return
+    }
     val stateB = collapsed && !(jellyStyle && !hasNowPlaying)
     val idleFold = collapsed && !hasNowPlaying && !jellyStyle
     // One bar narrowing into the two circles rather than two layouts trading places: the row's
@@ -619,6 +641,8 @@ private fun FrostedPill(
     blurRadius: Dp = DockGlassBlurRadius,
     // The jelly dock's smoked glass instead of the clear one, so state B matches the jelly bar.
     jelly: Boolean = false,
+    // BeatWave's clearer glass, for the folded fluid dock.
+    beatWave: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val shape = RoundedCornerShape(percent = 50)
@@ -626,7 +650,13 @@ private fun FrostedPill(
         modifier = modifier
             .height(height)
             .nowPlayingAccessory(sharedAccessoryScope)
-            .then(if (jelly) Modifier.jellyGlass(shape) else Modifier.clearGlass(shape)),
+            .then(
+                when {
+                    jelly -> Modifier.jellyGlass(shape)
+                    beatWave -> Modifier.beatWaveGlass(shape)
+                    else -> Modifier.clearGlass(shape)
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) { content() }
 }
@@ -645,6 +675,8 @@ private fun FrostedCircle(
     // Jelly glass, and a jelly press: it squashes wide and short under the finger and wobbles back,
     // the way the jelly dock's pill does, instead of sinking.
     jelly: Boolean = false,
+    // BeatWave's clearer glass, for the folded fluid dock.
+    beatWave: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     var pressed by remember { mutableStateOf(false) }
@@ -679,6 +711,7 @@ private fun FrostedCircle(
             .then(
                 when {
                     jelly -> Modifier.jellyGlass(CircleShape)
+                    beatWave -> Modifier.beatWaveGlass(CircleShape)
                     openDockGlass -> Modifier.dockGlass(CircleShape)
                     else -> Modifier.clearGlass(CircleShape)
                 },
@@ -711,9 +744,10 @@ private fun NavGlyph(
     // state, and a scale on the draw layer costs nothing on a frame where the circle is already
     // being remeasured.
     scale: Float = 1f,
+    modifier: Modifier = Modifier,
 ) {
     // Outlined to solid is a change of state, so it is watched happening rather than swapped on a frame.
-    Crossfade(targetState = iconRes, animationSpec = tween(170), label = "navGlyph") { res ->
+    Crossfade(targetState = iconRes, animationSpec = tween(170), label = "navGlyph", modifier = modifier) { res ->
         Icon(
             painter = painterResource(res),
             contentDescription = contentDescription,
@@ -768,8 +802,13 @@ private fun LiquidTabBar(
     onItemClick: (Screens, Boolean) -> Unit,
     modifier: Modifier = Modifier,
     height: Dp = 64.dp,
+    // Set inside the fluid dock's fold: the tabs fade in and out through a blur, and the selected
+    // icon is the one that flies to and from the folded circle.
+    morph: FluidMorph? = null,
 ) {
     if (tabs.isEmpty()) return
+    val tabFade = morph?.let { Modifier.fluidTabFade(it.visibility) } ?: Modifier
+    val flyingIcon = morph?.let { it.sharedIcon() } ?: Modifier
 
     val density = LocalDensity.current
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
@@ -1028,6 +1067,7 @@ private fun LiquidTabBar(
                         },
                         onClick = { onItemClick(screen, index == selectedIndex) },
                         gestureOwnedByBar = true,
+                        itemModifier = tabFade,
                     )
                 }
             }
@@ -1079,7 +1119,10 @@ private fun LiquidTabBar(
 
         // ---- the capsule ------------------------------------------------------------------
         if (tabWidthPx > 0f) {
-            val tabWidth = with(density) { tabWidthPx.toDp() }
+            // Never narrower than it is tall. While the fluid dock unfolds, the bar is measured at every
+            // width between a circle and the full row, and a capsule a third of that was a dark sliver
+            // beside the icon; at least round, it is the circle the bar is growing out of.
+            val tabWidth = with(density) { tabWidthPx.toDp() }.coerceAtLeast(capsuleHeight)
             val capsuleModifier = Modifier
                 .padding(horizontal = inset)
                 .graphicsLayer {
@@ -1120,7 +1163,7 @@ private fun LiquidTabBar(
                                 scaleY *= 1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f)
                             },
                             onDrawSurface = {
-                                drawRect(restWash.copy(alpha = 0.62f * (1f - 0.75f * dampedDragAnimation.pressProgress)))
+                                drawRect(restWash.copy(alpha = 0.8f * (1f - 0.75f * dampedDragAnimation.pressProgress)))
                             },
                         )
                         .height(capsuleHeight)
@@ -1154,6 +1197,8 @@ private fun LiquidTabBar(
                             labelFontSize = labelFontSize,
                             scaleProvider = { 1f },
                             onClick = null,
+                            iconModifier = flyingIcon,
+                            labelModifier = tabFade,
                         )
                     }
                 }
@@ -1223,6 +1268,10 @@ private fun RowScope.LiquidTabItem(
     scaleProvider: () -> Float,
     onClick: (() -> Unit)?,
     gestureOwnedByBar: Boolean = false,
+    // Hooks for the fold (see FluidDock): what fades the tab in and out, and what flies its icon.
+    itemModifier: Modifier = Modifier,
+    iconModifier: Modifier = Modifier,
+    labelModifier: Modifier = Modifier,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     Column(
@@ -1251,7 +1300,8 @@ private fun RowScope.LiquidTabItem(
                 val scale = scaleProvider()
                 scaleX = scale
                 scaleY = scale
-            },
+            }
+            .then(itemModifier),
         verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -1259,7 +1309,7 @@ private fun RowScope.LiquidTabItem(
             painter = painterResource(if (filled) screen.iconIdActive else screen.iconIdInactive),
             contentDescription = stringResource(screen.titleId),
             tint = tint,
-            modifier = Modifier.size(26.dp),
+            modifier = iconModifier.size(26.dp),
         )
         if (showLabel) {
             Text(
@@ -1273,7 +1323,7 @@ private fun RowScope.LiquidTabItem(
                 overflow = TextOverflow.Ellipsis,
                 // Kept clear of the capsule's curved ends, which is the room the size above was
                 // solved for.
-                modifier = Modifier.padding(horizontal = DockLabelSideRoom),
+                modifier = Modifier.padding(horizontal = DockLabelSideRoom).then(labelModifier),
             )
         }
     }
@@ -1849,3 +1899,261 @@ private fun selectedItemContainerColor(pureBlack: Boolean): Color =
     } else {
         MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
     }
+
+/* ----------------------------------------------------------------------- */
+/* The fluid dock: BeatWave's fold                                          */
+/* ----------------------------------------------------------------------- */
+
+/*
+ * BeatWave's floating tab bar fold (their vendored FloatingTabBar), on this dock's pieces.
+ *
+ * The two states are not two layouts trading places; they are the same three objects in two
+ * shapes, tied together as shared elements. Folding, the tab pill *is* the circle on the left:
+ * one piece of glass whose bounds spring from the width of the bar down to a circle, with the
+ * selected icon flying across to sit in it while the other tabs blur out where they were. The
+ * search circle is the same circle at both ends, sliding in to sit beside it. Unfolding is the
+ * same motion backwards: the circle stretches into the bar and the tabs blur in on it.
+ *
+ * Nothing playing, the folded dock is just those two circles side by side in the middle; with a
+ * song, the mini player pill sits between them, the full width of the row.
+ */
+
+/** The folded dock's pieces: BeatWave's inline row, 48dp, 8dp apart. */
+private val FluidInlineSize = 48.dp
+private val FluidInlineGap = 8.dp
+
+private const val FluidKeyTabs = "fluidDockTabs"
+private const val FluidKeySearch = "fluidDockSearch"
+private const val FluidKeyIcon = "fluidDockIcon"
+
+/** The fold's two halves, handed to the tab strip so it can take part in it. */
+@OptIn(ExperimentalSharedTransitionApi::class)
+private class FluidMorph(
+    val shared: SharedTransitionScope,
+    val visibility: AnimatedVisibilityScope,
+) {
+    @Composable
+    fun sharedIcon(): Modifier = with(shared) {
+        Modifier.sharedElement(
+            sharedContentState = rememberSharedContentState(FluidKeyIcon),
+            animatedVisibilityScope = visibility,
+            zIndexInOverlay = 2f,
+        )
+    }
+}
+
+/**
+ * A tab that is not travelling: it arrives late and leaves early, through a 50dp blur. BeatWave's
+ * animateEnterExitTab - in over 150ms, starting halfway and done at 80%, so the glass has already
+ * stretched most of the way before anything appears on it.
+ */
+@Composable
+private fun Modifier.fluidTabFade(visibility: AnimatedVisibilityScope): Modifier {
+    val transition = visibility.transition
+    val blurPx = with(LocalDensity.current) { 50.dp.toPx() }
+    val alpha = transition.animateFloat(
+        transitionSpec = {
+            keyframes {
+                durationMillis = 150
+                if (targetState == EnterExitState.Visible) {
+                    0f atFraction 0.5f using FastOutSlowInEasing
+                    1f atFraction 0.8f
+                }
+            }
+        },
+        label = "fluidTabAlpha",
+    ) { if (it == EnterExitState.Visible) 1f else 0f }
+    val blur = transition.animateFloat(
+        transitionSpec = {
+            keyframes {
+                durationMillis = 150
+                if (targetState == EnterExitState.Visible) {
+                    blurPx atFraction 0.5f using FastOutSlowInEasing
+                    0f atFraction 0.8f
+                }
+            }
+        },
+        label = "fluidTabBlur",
+    ) { if (it == EnterExitState.Visible) 0f else blurPx }
+    return graphicsLayer {
+        this.alpha = alpha.value
+        val radius = blur.value
+        renderEffect = if (radius > 0.5f) BlurEffect(radius, radius) else null
+    }
+}
+
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+private fun FluidDock(
+    tabs: List<Screens>,
+    searchScreen: Screens?,
+    leftTab: Screens?,
+    collapsed: Boolean,
+    hasNowPlaying: Boolean,
+    pureBlack: Boolean,
+    isSelected: (Screens) -> Boolean,
+    onItemClick: (Screens, Boolean) -> Unit,
+    onMiniPlayerClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val ink = clearGlassContentColor()
+    SharedTransitionLayout(modifier.fillMaxWidth()) {
+        val shared = this
+        AnimatedContent(
+            targetState = collapsed,
+            // What is not a shared element crossfades, quickly; the shared pieces carry the motion.
+            // No clip: the folded row is narrower than the open one and the springs overshoot.
+            transitionSpec = {
+                (fadeIn(tween(220, easing = FastOutSlowInEasing)) togetherWith
+                    fadeOut(tween(180, easing = FastOutSlowInEasing)))
+                    .using(SizeTransform(clip = false))
+            },
+            contentAlignment = Alignment.BottomCenter,
+            modifier = Modifier.fillMaxWidth(),
+            label = "fluidDock",
+        ) { folded ->
+            val visibility = this
+            if (!folded) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(DockCircleSize),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    LiquidTabBar(
+                        tabs = tabs,
+                        pureBlack = pureBlack,
+                        isSelected = isSelected,
+                        onItemClick = onItemClick,
+                        morph = FluidMorph(shared, visibility),
+                        modifier = Modifier
+                            .weight(1f)
+                            .widthIn(max = LiquidTabBarMaxWidth)
+                            .sharedElement(
+                                sharedContentState = rememberSharedContentState(FluidKeyTabs),
+                                animatedVisibilityScope = visibility,
+                                zIndexInOverlay = 1f,
+                            ),
+                    )
+                    if (searchScreen != null) {
+                        FluidSearchCircle(
+                            screen = searchScreen,
+                            size = DockCircleSize,
+                            folded = false,
+                            ink = ink,
+                            isSelected = isSelected,
+                            onItemClick = onItemClick,
+                            modifier = Modifier.sharedElement(
+                                sharedContentState = rememberSharedContentState(FluidKeySearch),
+                                animatedVisibilityScope = visibility,
+                                zIndexInOverlay = 1f,
+                            ),
+                        )
+                    }
+                }
+            } else {
+                Row(
+                    // Full width in both cases, so the fold has one frame to work in: with nothing
+                    // playing the two circles are packed together in its middle.
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(FluidInlineSize),
+                    horizontalArrangement = Arrangement.spacedBy(FluidInlineGap, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (leftTab != null) {
+                        // The page you are on. Tapping it there unfolds the dock (the page scrolls
+                        // to its top); holding it fans the other tabs out above it.
+                        val here = isSelected(leftTab)
+                        var fanOpen by remember { mutableStateOf(false) }
+                        FrostedCircle(
+                            size = FluidInlineSize,
+                            beatWave = true,
+                            onClick = { onItemClick(leftTab, here) },
+                            onLongClick = { fanOpen = true },
+                            modifier = Modifier.sharedElement(
+                                sharedContentState = rememberSharedContentState(FluidKeyTabs),
+                                animatedVisibilityScope = visibility,
+                                zIndexInOverlay = 1f,
+                            ),
+                        ) {
+                            NavGlyph(
+                                iconRes = if (here) leftTab.iconIdActive else leftTab.iconIdInactive,
+                                contentDescription = stringResource(leftTab.titleId),
+                                tint = ink,
+                                modifier = Modifier.sharedElement(
+                                    sharedContentState = rememberSharedContentState(FluidKeyIcon),
+                                    animatedVisibilityScope = visibility,
+                                    zIndexInOverlay = 2f,
+                                ),
+                            )
+                            if (fanOpen) {
+                                DockTabFan(
+                                    tabs = tabs.filter { it != leftTab },
+                                    pureBlack = pureBlack,
+                                    anchorHeight = FluidInlineSize,
+                                    onPick = { tab ->
+                                        fanOpen = false
+                                        onItemClick(tab, isSelected(tab))
+                                    },
+                                    onDismiss = { fanOpen = false },
+                                )
+                            }
+                        }
+                    }
+                    if (hasNowPlaying) {
+                        FrostedPill(
+                            height = FluidInlineSize,
+                            beatWave = true,
+                            // The mini player above the open dock, flown down into the row.
+                            sharedAccessoryScope = visibility,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            MiniPlayerPill(pureBlack = pureBlack, onExpand = onMiniPlayerClick)
+                        }
+                    }
+                    if (searchScreen != null) {
+                        FluidSearchCircle(
+                            screen = searchScreen,
+                            size = FluidInlineSize,
+                            folded = true,
+                            ink = ink,
+                            isSelected = isSelected,
+                            onItemClick = onItemClick,
+                            modifier = Modifier.sharedElement(
+                                sharedContentState = rememberSharedContentState(FluidKeySearch),
+                                animatedVisibilityScope = visibility,
+                                zIndexInOverlay = 1f,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FluidSearchCircle(
+    screen: Screens,
+    size: Dp,
+    folded: Boolean,
+    ink: Color,
+    isSelected: (Screens) -> Boolean,
+    onItemClick: (Screens, Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val active = isSelected(screen)
+    FrostedCircle(
+        size = size,
+        openDockGlass = !folded,
+        beatWave = folded,
+        onClick = { onItemClick(screen, active) },
+        modifier = modifier,
+    ) {
+        NavGlyph(
+            iconRes = if (active) screen.iconIdActive else screen.iconIdInactive,
+            contentDescription = stringResource(screen.titleId),
+            tint = if (active) ink else ink.copy(alpha = 0.8f),
+        )
+    }
+}
