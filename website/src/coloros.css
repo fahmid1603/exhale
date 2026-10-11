@@ -17,6 +17,10 @@
   --c17-tile-2: #1d1d20;
   --c17-line: rgba(255, 255, 255, 0.1);
   --c17-cyan: #6fd6ff;
+  /* The mark's gold: highlight, body and shadow. */
+  --c17-gold-hi: #fff6dc;
+  --c17-gold: #f2c14e;
+  --c17-gold-deep: #b8862a;
   --c17-wide: min(1240px, 100% - 40px);
   background: #000;
   color: var(--c17-ink);
@@ -31,9 +35,9 @@
   white-space: nowrap;
 }
 
-/* The fluid fill: the three album colours and a cold blue, drifting. */
+/* The fluid fill: the mark's gold, from champagne to amber and back, drifting. */
 .c17-grad {
-  background: linear-gradient(100deg, var(--iris), var(--c17-cyan) 28%, var(--rose) 58%, var(--ember) 82%, var(--iris));
+  background: linear-gradient(100deg, var(--c17-gold-deep), var(--c17-gold) 22%, var(--c17-gold-hi) 42%, var(--c17-gold) 62%, #d9902a 82%, var(--c17-gold-deep));
   background-size: 260% 100%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -132,35 +136,68 @@
   opacity: calc(1 - var(--hp) * 0.7);
 }
 
+/* The horizon: a black sphere rising behind the phones, its rim lit in the mark's gold - the
+   same object the home page's hero is made of, so the two pages open on one material. */
+.c17-horizon {
+  position: absolute;
+  left: 50%;
+  top: clamp(560px, 70vh, 820px);
+  width: 170vw;
+  aspect-ratio: 1;
+  translate: -50% 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 0%, #2a1c08 0%, #0b0805 12%, #000 34%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 226, 150, 0.9),
+    inset 0 18px 60px rgba(242, 193, 78, 0.28),
+    0 -10px 60px rgba(242, 193, 78, 0.35),
+    0 -60px 200px rgba(217, 144, 42, 0.28);
+  transform: translate3d(0, calc(var(--hp) * -120px), 0);
+}
+
+/* A line of white-hot light where the rim meets the eye, the brightest point on the page. */
+.c17-horizon::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  width: 42vw;
+  height: 5px;
+  translate: -50% 0;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, #fffbe8, rgba(255, 220, 140, 0.6) 55%, transparent);
+  filter: blur(2px);
+}
+
 /* Soft already: each is a radial gradient that fades to nothing, so there is
    no blur filter to recompute on every frame of the drift, and over pure black
    a screen blend would change nothing. */
 .c17-blob {
   position: absolute;
   border-radius: 50%;
-  opacity: 0.55;
+  opacity: 0.32;
   will-change: transform;
 }
 
 .c17-blob-a {
   width: 46vw; height: 46vw;
   left: 6vw; top: 4vh;
-  background: radial-gradient(circle, var(--iris), transparent 66%);
+  background: radial-gradient(circle, rgba(242, 193, 78, 0.7), transparent 66%);
   animation: c17-drift-a 18s ease-in-out infinite alternate;
 }
 
 .c17-blob-b {
   width: 40vw; height: 40vw;
   right: 4vw; top: 10vh;
-  background: radial-gradient(circle, var(--rose), transparent 66%);
+  background: radial-gradient(circle, rgba(217, 120, 42, 0.6), transparent 66%);
   animation: c17-drift-b 22s ease-in-out infinite alternate;
 }
 
 .c17-blob-c {
   width: 34vw; height: 34vw;
   left: 34vw; top: 34vh;
-  background: radial-gradient(circle, var(--c17-cyan), transparent 66%);
-  opacity: 0.35;
+  background: radial-gradient(circle, rgba(255, 236, 190, 0.5), transparent 66%);
+  opacity: 0.22;
   animation: c17-drift-a 26s ease-in-out infinite alternate-reverse;
 }
 
@@ -184,7 +221,7 @@
   font-size: clamp(20px, 2.4vw, 28px);
   font-weight: 600;
   letter-spacing: 0.02em;
-  color: var(--c17-ink);
+  color: var(--c17-gold-hi);
   margin: 0 0 6px;
 }
 
@@ -194,17 +231,22 @@
   font-weight: 600;
   line-height: 0.92;
   letter-spacing: -0.045em;
-  background: linear-gradient(100deg, #fff 0%, #fff 30%, var(--c17-cyan) 46%, var(--iris) 58%, var(--rose) 72%, #fff 88%);
-  background-size: 300% 100%;
+  /* Polished gold, with a band of white light crossing it every few seconds. */
+  background:
+    linear-gradient(100deg, transparent 0%, transparent 40%, rgba(255, 252, 240, 0.95) 50%, transparent 60%, transparent 100%),
+    linear-gradient(176deg, var(--c17-gold-hi) 0%, #ffe39a 24%, var(--c17-gold) 48%, var(--c17-gold-deep) 64%, #ffe39a 86%, var(--c17-gold-hi) 100%);
+  background-size: 300% 100%, 100% 100%;
+  background-repeat: no-repeat;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  filter: drop-shadow(0 18px 40px rgba(242, 193, 78, 0.18));
   animation: c17-sheen 7s cubic-bezier(0.45, 0, 0.2, 1) infinite;
 }
 
 @keyframes c17-sheen {
-  0% { background-position: 100% 0; }
-  60%, 100% { background-position: -100% 0; }
+  0% { background-position: 100% 0, 0 0; }
+  60%, 100% { background-position: -100% 0, 0 0; }
 }
 
 .c17-hero-line {
@@ -244,8 +286,9 @@
   height: 46px;
   padding: 0 24px;
   border-radius: 999px;
-  background: var(--c17-ink);
-  color: #000;
+  background: linear-gradient(180deg, #ffe9a8, var(--c17-gold) 55%, #d9a03a);
+  color: #1a1206;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 10px 30px -8px rgba(242, 193, 78, 0.55);
   font-size: 15px;
   font-weight: 600;
   text-decoration: none;
@@ -284,8 +327,9 @@
   box-shadow:
     0 0 0 1.5px rgba(255, 255, 255, 0.14),
     0 0 0 7px #0c0c0e,
-    0 0 0 8.5px rgba(255, 255, 255, 0.08),
-    0 40px 90px -30px rgba(0, 0, 0, 0.9);
+    0 0 0 8.5px rgba(255, 226, 150, 0.22),
+    0 40px 90px -30px rgba(0, 0, 0, 0.9),
+    0 0 70px -10px rgba(242, 193, 78, 0.22);
   transition: transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 

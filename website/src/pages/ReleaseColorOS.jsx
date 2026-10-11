@@ -116,6 +116,7 @@ function Hero({ release }) {
         <span className="c17-blob c17-blob-a" />
         <span className="c17-blob c17-blob-b" />
         <span className="c17-blob c17-blob-c" />
+        <span className="c17-horizon" />
       </div>
 
       <div className="c17-hero-name">
