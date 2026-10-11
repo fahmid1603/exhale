@@ -6,6 +6,7 @@ import { RELEASES, REPO } from '../content.js'
 import { useReveals } from '../hooks.js'
 import Segments from '../components/Segments.jsx'
 import '../coloros.css'
+import HighlightSlider from '../components/HighlightSlider.jsx'
 
 /*
  * A release page in the shape of OPPO's ColorOS 17 page.
@@ -182,67 +183,6 @@ function BigTitle({ eyebrow, title, lede }) {
   )
 }
 
-/* -------------------------------------------------------------- highlights */
-
-/**
- * The cards that slide across while the page holds still.
- *
- * The section is as tall as the sideways travel needs; its inner frame sticks
- * under the chapter row and the track is moved by how far through the section
- * the reader is. One transform, written straight to the element.
- */
-function HighlightRail({ cards }) {
-  const section = useRef(null)
-  const track = useRef(null)
-  const [pinned, setPinned] = useState(true)
-
-  useEffect(() => setPinned(!reducedMotion()), [])
-
-  useScrollFrame(() => {
-    const s = section.current
-    const t = track.current
-    if (!s || !t || reducedMotion()) return
-    const rect = s.getBoundingClientRect()
-    const travel = Math.max(0, t.scrollWidth - t.parentElement.clientWidth)
-    const span = Math.max(1, rect.height - window.innerHeight)
-    const p = Math.min(1, Math.max(0, -rect.top / span))
-    t.style.transform = `translate3d(${(-travel * p).toFixed(1)}px, 0, 0)`
-    s.style.setProperty('--rail', p.toFixed(4))
-  }, [cards.length])
-
-  return (
-    <section
-      className="c17-rail"
-      ref={section}
-      data-pinned={pinned}
-      style={{ '--cards': cards.length }}
-      aria-label="Highlights"
-    >
-      <div className="c17-rail-frame">
-        <div className="c17-rail-track" ref={track}>
-          {cards.map((card, i) => (
-            <article className="c17-card" key={card.title} style={{ '--tint': card.tint }}>
-              <div className="c17-card-say">
-                <p className="c17-card-kick">{card.kicker}</p>
-                <h3 className="c17-card-h">{card.title}</h3>
-                <p className="c17-card-p">{card.body}</p>
-              </div>
-              <div className="c17-card-shot">
-                <img src={card.shot.src} alt={card.shot.alt} width="720" height="1280" loading={i < 2 ? 'eager' : 'lazy'} decoding="async" />
-              </div>
-            </article>
-          ))}
-        </div>
-        <div className="c17-rail-dots" aria-hidden="true">
-          {cards.map((card, i) => (
-            <span key={card.title} style={{ '--n': i, '--of': cards.length - 1 }} />
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
 /* ------------------------------------------------------------------ tiles */
 
 function Tile({ tile, index }) {
@@ -369,7 +309,16 @@ export default function ReleaseColorOS({ release }) {
 
         <section className="c17-chapter c17-chapter-hl" id="highlights">
           <BigTitle title="Highlights" />
-          <HighlightRail cards={release.highlights} />
+          <HighlightSlider
+            id="highlights-cards"
+            title={null}
+            items={release.highlights.map((card) => ({
+              shot: card.shot,
+              kicker: card.kicker,
+              lead: card.title,
+              rest: card.body,
+            }))}
+          />
         </section>
 
         {release.sections.map((section) => (

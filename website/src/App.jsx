@@ -4,6 +4,7 @@ import { AnnounceBar, RELEASE_PATH, SiteFooter, TopBar } from './components/Chro
 import Dock from './components/Dock.jsx'
 import Features from './components/Features.jsx'
 import Words from './components/Words.jsx'
+import HighlightSlider from './components/HighlightSlider.jsx'
 import Segments from './components/Segments.jsx'
 import Phone from './components/Phone.jsx'
 import KeyHero from './components/KeyHero.jsx'
@@ -74,103 +75,6 @@ const HIGHLIGHTS = [
   { shot: SHOT_405.settings, lead: 'One material, everywhere.', rest: 'Grouped glass tables all the way down to Settings.' },
   { shot: SHOT_405.about, lead: 'It updates itself.', rest: 'Check, download and install without leaving the app.' },
 ]
-
-/** How long each highlight holds before the rail moves on by itself. */
-const HL_HOLD_MS = 5200
-
-function Highlights() {
-  const rail = useRef(null)
-  const section = useRef(null)
-  const [at, setAt] = useState(0)
-  // Moves on by itself, as ColorOS's does, while it is on screen — and stops for
-  // good the moment anyone takes over with a swipe, a dot or an arrow.
-  const [auto, setAuto] = useState(!prefersReducedMotion())
-  const live = useOnScreen(section, '0px')
-
-  useEffect(() => {
-    if (!auto || !live) return undefined
-    const id = window.setTimeout(() => goTo(at >= HIGHLIGHTS.length - 1 ? 0 : at + 1, true), HL_HOLD_MS)
-    return () => window.clearTimeout(id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auto, live, at])
-
-  useEffect(() => {
-    const node = rail.current
-    if (!node) return undefined
-    const onScroll = () => {
-      const first = node.firstElementChild
-      if (!first) return
-      const pitch = first.getBoundingClientRect().width + 20
-      setAt(Math.round(node.scrollLeft / pitch))
-    }
-    node.addEventListener('scroll', onScroll, { passive: true })
-    return () => node.removeEventListener('scroll', onScroll)
-  }, [])
-
-  const goTo = (index, byItself = false) => {
-    if (!byItself) setAuto(false)
-    const node = rail.current
-    const card = node?.children[index]
-    if (!node || !card) return
-    const clamped = Math.max(0, Math.min(HIGHLIGHTS.length - 1, index))
-    const target = node.children[clamped]
-    node.scrollTo({
-      left: target.offsetLeft - node.firstElementChild.offsetLeft,
-      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
-    })
-  }
-
-  return (
-    <section className="hl" id="highlights" ref={section}>
-      <h2 className="hl-title shell reveal">Get the highlights.</h2>
-      <div className="hl-rail" ref={rail} onPointerDown={() => setAuto(false)}>
-        {HIGHLIGHTS.map((item, index) => (
-          <article className="hl-card" key={item.lead}>
-            <p className="hl-cap">
-              <b>{item.lead}</b> {item.rest}
-            </p>
-            <div className="hl-shot">
-              <img src={item.shot.src} alt={item.shot.alt} loading={index < 3 ? 'eager' : 'lazy'} decoding="async" />
-            </div>
-          </article>
-        ))}
-      </div>
-      <div className="hl-controls shell">
-        <div className="hl-dots" role="tablist" aria-label="Highlights">
-          {HIGHLIGHTS.map((item, index) => (
-            <button
-              key={item.lead}
-              type="button"
-              className="hl-dot"
-              data-on={index === at}
-              data-auto={auto && live}
-              style={{ '--hl-hold': `${HL_HOLD_MS}ms` }}
-              aria-label={item.lead}
-              onClick={() => goTo(index)}
-            >
-              {/* The active dot is a bar that fills while it holds, as ColorOS's does. */}
-              {index === at && <span className="hl-dot-fill" key={`${at}-${auto}`} />}
-            </button>
-          ))}
-        </div>
-        <div className="hl-arrows">
-          <button type="button" className="hl-arrow" aria-label="Previous" disabled={at <= 0} onClick={() => goTo(at - 1)}>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6 8.5 12l6 6" /></svg>
-          </button>
-          <button
-            type="button"
-            className="hl-arrow"
-            aria-label="Next"
-            disabled={at >= HIGHLIGHTS.length - 1}
-            onClick={() => goTo(at + 1)}
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6" /></svg>
-          </button>
-        </div>
-      </div>
-    </section>
-  )
-}
 
 /* ------------------------------------------------------------------ film */
 
@@ -475,7 +379,7 @@ export default function App() {
             </Link>
           }
         />
-        <Highlights />
+        <HighlightSlider items={HIGHLIGHTS} />
 
         <Film running={ambient} />
 

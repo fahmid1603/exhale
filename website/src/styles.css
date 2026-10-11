@@ -4030,6 +4030,16 @@ html:has(.release) {
   color: var(--ink);
 }
 
+.hl-kick {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #f2c14e;
+}
+
 .hl-shot {
   position: absolute;
   left: 50%;
