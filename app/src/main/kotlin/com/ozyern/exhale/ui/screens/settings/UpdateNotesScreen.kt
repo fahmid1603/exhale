@@ -46,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -59,6 +60,7 @@ import com.ozyern.exhale.ui.component.ColorOsType
 import com.ozyern.exhale.ui.component.LiquidBackButton
 import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.utils.Updater
+import com.ozyern.exhale.utils.VersionChangelog
 
 /**
  * What changed, read in the app the way ColorOS shows an update's notes: the version in a card of
@@ -83,6 +85,7 @@ private data class NotesState(val version: String, val blocks: List<NoteBlock>, 
 @Composable
 private fun UpdateNotesContent(navController: NavController) {
     val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
     var state by remember { mutableStateOf<NotesState?>(null) }
     var failed by remember { mutableStateOf(false) }
     var expanded by rememberSaveable { mutableStateOf(true) }
@@ -90,20 +93,25 @@ private fun UpdateNotesContent(navController: NavController) {
     LaunchedEffect(Unit) {
         val releases = Updater.getCachedReleases()
         val latest = Updater.getLatestReleaseInfo().getOrNull()
-        val current = BuildConfig.VERSION_NAME
+        val current = VersionChangelog.currentVersion
         // A newer release: its notes, as that is what the user is deciding on. Otherwise the notes
-        // of the build they are running.
-        val chosen = latest?.takeIf { Updater.hasUpdate(it.tagName.removePrefix("v"), current) }
-            ?: releases.firstOrNull { Updater.isSameVersion(it.tagName.removePrefix("v"), current) }
-            ?: latest
-        if (chosen == null) {
+        // of the build they are running — its own file, which every build carries. This used to
+        // fall back to the newest release on GitHub, so a build with no release page yet showed
+        // the version before it, as if those were its notes.
+        val newer = latest?.takeIf { Updater.hasUpdate(it.tagName.removePrefix("v"), current) }
+        val version = newer?.tagName?.removePrefix("v") ?: current
+        val page = newer ?: releases.firstOrNull { Updater.isSameVersion(it.tagName.removePrefix("v"), current) }
+        val markdown = VersionChangelog.remote(version)
+            ?: VersionChangelog.bundled(context, version)
+            ?: page?.body
+        if (markdown == null) {
             failed = true
             return@LaunchedEffect
         }
         state = NotesState(
-            version = chosen.tagName.removePrefix("v"),
-            blocks = parseNotes(chosen.body.orEmpty()),
-            url = chosen.htmlUrl,
+            version = version,
+            blocks = parseNotes(markdown),
+            url = page?.htmlUrl,
         )
     }
 
