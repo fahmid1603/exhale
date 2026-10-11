@@ -9,15 +9,6 @@
 </p>
 
 <p align="center">
-  <a href="https://android.com"><img src="https://img.shields.io/badge/Platform-Android%2013%2B-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Platform"></a>
-  <a href="https://kotlinlang.org"><img src="https://img.shields.io/badge/Kotlin-100%25-7F52FF?style=flat-square&logo=kotlin&logoColor=white" alt="Kotlin"></a>
-  <a href="https://developer.android.com/jetpack/compose"><img src="https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?style=flat-square&logo=android&logoColor=white" alt="Jetpack Compose"></a>
-  <a href="https://github.com/ozyern/Exhale/releases"><img src="https://img.shields.io/github/v/release/ozyern/Exhale?style=flat-square&color=F5B700" alt="Latest release"></a>
-  <a href="https://github.com/ozyern/exhale/releases"><img src="assets/downloads.svg" alt="Total downloads"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL%20v3-blue.svg?style=flat-square" alt="License"></a>
-</p>
-
-<p align="center">
   <a href="https://exhale.ozyern.me/"><strong>exhale.ozyern.me</strong></a>
   &nbsp;·&nbsp;
   <a href="https://github.com/ozyern/Exhale/releases">Download</a>
